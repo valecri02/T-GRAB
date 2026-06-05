@@ -44,7 +44,7 @@ ARGS=(
     CTDG.link_pred.periodicity.tgat
     --data="$DATA"
     --seed=$SEED
-    --patience=100
+    --patience=50
     --num-epoch=100000
     --train-eval-gap=4
     --node-feat=$NODE_FEAT

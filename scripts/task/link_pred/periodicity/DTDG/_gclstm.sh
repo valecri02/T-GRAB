@@ -34,7 +34,7 @@ ARGS=(
     DTDG.link_pred.periodicity.gclstm
     --data="$DATA"
     --seed=$SEED
-    --patience=100
+    --patience=50
     --num-epoch=100000
     --node-feat=$NODE_FEAT
     --data-loc=$DATA_LOC

@@ -34,7 +34,7 @@ ARGS=(
     DTDG.link_pred.periodicity.tgcn
     --data="$DATA"
     --seed=$SEED
-    --patience=100
+    --patience=50
     --num-epoch=100000
     --val-first-metric=$VAL_FIRST_METRIC
     --node-feat=$NODE_FEAT
