@@ -71,6 +71,7 @@ ARGS=(
 TRAIN_ARGS=(
     "${ARGS[@]}" 
     "--num-epochs-to-visualize=$NUM_EPOCHS_TO_VIS"
+    "--replay-memory-before-eval"
 )
 # Evaluation arguments
 EVAL_ARGS=(

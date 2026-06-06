@@ -15,9 +15,9 @@ NUM_EPOCHS_TO_VIS=0
 EVAL_MODE=false
 CTDG_DO_SNAPSHOT_TRAINING=true
 # METHODS_TO_RUN=("CTDG/_edgebank" "CTDG/_dygformer" "CTDG/_ctan" "CTDG/_tgn" "CTDG/_tgat" "DTDG/_gcn" "DTDG/_gclstm" "DTDG/_egcn" "DTDG/_tgcn" "DTDG/_gat" "DTDG/_egcn" "DTDG/_previous")
-METHODS_TO_RUN=("CTDG/_ctan")
-CLEAR_RESULT=false
-WANDB_ENTITY="[your_username]"
+METHODS_TO_RUN=("CTDG/_tgn")
+CLEAR_RESULT=true
+WANDB_ENTITY="cristoferivalentina5-danmarks-tekniske-universitet-dtu"
 ###########################################################################
 
 VAL_FIRST_METRIC="memnode_avg_f1"
@@ -55,7 +55,8 @@ do
                 RAW_MEM=$(echo "0.05 * $NUM_BRANCHES * $BRANCH_LEN" | bc)
                 RAW_MEM=$(printf "%.0f" "$RAW_MEM")
 
-                for SEED in 1235 2346 3457
+                #1235 2346 3457
+                for SEED in 1235
                 do
                     for NODE_FEAT in "ONE_HOT" # other options: "RANDN" and "CONSTANT"
                     do

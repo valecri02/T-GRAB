@@ -15,29 +15,29 @@ NUM_EPOCHS_TO_VIS=0
 EVAL_MODE=false
 CTDG_DO_SNAPSHOT_TRAINING=true
 # METHODS_TO_RUN=("CTDG/_edgebank" "CTDG/_dygformer" "CTDG/_ctan" "CTDG/_tgn" "CTDG/_tgat" "DTDG/_gcn" "DTDG/_gclstm" "DTDG/_egcn" "DTDG/_tgcn" "DTDG/_gat" "DTDG/_previous")
-METHODS_TO_RUN=("DTDG/_tgcn")
-CLEAR_RESULT=false
-WANDB_ENTITY="[your_username]"
+METHODS_TO_RUN=("CTDG/_tgn")
+CLEAR_RESULT=true
+WANDB_ENTITY="cristoferivalentina5-danmarks-tekniske-universitet-dtu"
 ###########################################################################
 
 VAL_FIRST_METRIC="memnode_avg_f1"
 
 #@@@@@@@@@@@@@@@@@@@@@ Dataset-specific variables @@@@@@@@@@@@@@@@@@@@@@@@@@
-NUM_NODES=101
+NUM_NODES=100
 
 for VAL_RATIO in 0.1
 do
     for TEST_RATIO in 0.1
     do
-        for TEST_INDUCTIVE_RATIO in 0.1
+        for TEST_INDUCTIVE_RATIO in 0.0
         do
-            for TEST_INDUCTIVE_NUM_NODES_RATIO in 0.1
+            for TEST_INDUCTIVE_NUM_NODES_RATIO in 0.0
             do
                 for ER_PROB in 0.002
                 do
-                    for ER_PROB_INDUCTIVE in 0.02
+                    for ER_PROB_INDUCTIVE in 0.0
                     do
-                        for LAG in 1
+                        for LAG in 16 64
                         do
                             for NUM_PATTERNS in 4000
                             do
