@@ -11,9 +11,7 @@ from tgb.utils.utils import set_random_seed, save_results
 
 from .....utils import  EarlyStopMonitor
 from ....DTDG.link_pred.trainer import LinkPredTrainer
-
-
-MEMORY_TARGET_TASK_REGEX = r"^\((\d+), (\d+)\)$"
+from .....dataset.DTDG.graph_generation.mem_node import MemoryNodeGenerator
 
 
 class MemoryNodeTrainer(LinkPredTrainer):
@@ -23,12 +21,12 @@ class MemoryNodeTrainer(LinkPredTrainer):
     def __init__(self):
         super(MemoryNodeTrainer, self).__init__()
         data_pattern = self.args.data.split("/")[0]
-        match = re.fullmatch(MEMORY_TARGET_TASK_REGEX, data_pattern)
+        match = re.fullmatch(MemoryNodeGenerator.REGEX, data_pattern)
         if match:
             self.K = int(match.group(1))
 
     def get_dataset_regex_pattern(self):
-        dataset_regex_pattern = MEMORY_TARGET_TASK_REGEX
+        dataset_regex_pattern = MemoryNodeGenerator.REGEX
         dataset_name_part_to_check = self.args.data.split("/")[0]
         return dataset_regex_pattern, dataset_name_part_to_check
    
