@@ -187,6 +187,7 @@ class Trainer(ABC):
         parser.add_argument('--device', type=str, default="default")
         parser.add_argument('--val-first-metric', type=str, default="avg_f1", help="First metric to evaluate the validation with. Model weights with best evaluation result during the training is saved.")
         parser.add_argument('--train-eval-gap', type=int, default=1, help="Number of epochs between training and evaluation.")
+        parser.add_argument('--replay-memory-before-eval', action='store_true', help='If set, reset temporal memory after training and replay the train split before validation.')
         return parser
     
     def _get_args(self) -> argparse.Namespace:
@@ -233,6 +234,15 @@ class Trainer(ABC):
         
         for k, v in self.test_inductive_perf.items():
             info[f"test-inductive {k}"] = v
+
+    def supports_temporal_replay(self) -> bool:
+        return False
+
+    def reset_temporal_state(self) -> None:
+        pass
+
+    def replay_loader_for_memory(self, loader) -> None:
+        pass
 
     def _one_run(self):
         print("---------------------------------------------------------------------")
@@ -324,9 +334,15 @@ class Trainer(ABC):
                     model.eval()
 
                 with torch.no_grad():
+                    if self.args.replay_memory_before_eval and self.supports_temporal_replay():
+                        self.reset_temporal_state()
+                        self.replay_loader_for_memory(self.train_loader)
+
                     # validation
                     start_val = timeit.default_timer()
                     val_metrics = self.eval_for_one_epoch(split_mode="val")
+                    if "memnode_avg_loss" in val_metrics:
+                        self._early_stop_metric = val_metrics["memnode_avg_loss"]
                     print(f"\tval {self.val_first_metric}: {val_metrics[self.val_first_metric]: .4f}", flush=True)
 
                     for k, v in val_metrics.items():

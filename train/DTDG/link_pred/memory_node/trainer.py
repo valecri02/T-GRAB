@@ -4,14 +4,17 @@ import re
 import os
 import numpy as np
 import pickle
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.metrics import accuracy_score, average_precision_score, precision_score, recall_score, roc_auc_score, f1_score
 import timeit
 import torch
 from tgb.utils.utils import set_random_seed, save_results
 
 from .....utils import  EarlyStopMonitor
 from ....DTDG.link_pred.trainer import LinkPredTrainer
-from .....dataset.DTDG.graph_generation.mem_node import MemoryNodeGenerator
+
+
+MEMORY_TARGET_TASK_REGEX = r"^\((\d+), (\d+)\)$"
+
 
 class MemoryNodeTrainer(LinkPredTrainer):
     """ This class is only useful to train memory-node based datasets. 
@@ -20,25 +23,38 @@ class MemoryNodeTrainer(LinkPredTrainer):
     def __init__(self):
         super(MemoryNodeTrainer, self).__init__()
         data_pattern = self.args.data.split("/")[0]
-        match = re.fullmatch(MemoryNodeGenerator.REGEX, data_pattern)
+        match = re.fullmatch(MEMORY_TARGET_TASK_REGEX, data_pattern)
         if match:
             self.K = int(match.group(1))
 
     def get_dataset_regex_pattern(self):
-        dataset_regex_pattern = MemoryNodeGenerator.REGEX
+        dataset_regex_pattern = MEMORY_TARGET_TASK_REGEX
         dataset_name_part_to_check = self.args.data.split("/")[0]
         return dataset_regex_pattern, dataset_name_part_to_check
    
     def list_of_metrics_names(self) -> List[str]:
-        return ["memnode_avg_precision", "memnode_avg_recall", "memnode_avg_f1", "memnode_avg_acc"]
+        return [
+            "memnode_avg_precision",
+            "memnode_avg_recall",
+            "memnode_avg_f1",
+            "memnode_avg_acc",
+            "memnode_avg_loss",
+            "memnode_avg_pos_rate",
+            "memnode_avg_pred_pos_rate",
+            "memnode_avg_pos_score",
+            "memnode_avg_neg_score",
+            "memnode_avg_auc",
+            "memnode_avg_ap",
+        ]
 
     def _get_graph_mask_ground_truth_and_pred(self, graph_mask, curr_snapshot):
         graph_src_indices, graph_dst_indices = torch.nonzero(graph_mask, as_tuple=True)
         graph_ground_truth = curr_snapshot[graph_src_indices, graph_dst_indices].float()
         graph_prediction = self.model['link_pred'](self.z[graph_src_indices], self.z[graph_dst_indices])
-        graph_pred_bin = (graph_prediction >= 0.5).squeeze(-1)
+        graph_prediction = graph_prediction.squeeze(-1)
+        graph_pred_bin = graph_prediction >= 0.5
 
-        return graph_ground_truth, graph_pred_bin
+        return graph_ground_truth, graph_prediction, graph_pred_bin
 
     def update_metrics(self, 
                         curr_snapshot: torch.Tensor, 
@@ -61,19 +77,41 @@ class MemoryNodeTrainer(LinkPredTrainer):
 
         ## Skip self-loop edges during evaluation
         memnode_graph_mask.fill_diagonal_(0)
-        memnode_graph_ground_truth, memnode_graph_pred_bin = self._get_graph_mask_ground_truth_and_pred(memnode_graph_mask, curr_snapshot)
+        memnode_graph_ground_truth, memnode_graph_prediction, memnode_graph_pred_bin = self._get_graph_mask_ground_truth_and_pred(memnode_graph_mask, curr_snapshot)
         del memnode_graph_mask
         
         memnode_graph_precision = precision_score(memnode_graph_ground_truth.cpu().numpy(), memnode_graph_pred_bin.cpu().numpy(), zero_division=0)
         memnode_graph_recall = recall_score(memnode_graph_ground_truth.cpu().numpy(), memnode_graph_pred_bin.cpu().numpy(), zero_division=0)
         memnode_graph_f1 = f1_score(memnode_graph_ground_truth.cpu().numpy(), memnode_graph_pred_bin.cpu().numpy(), zero_division=0)
         memnode_graph_acc = accuracy_score(memnode_graph_ground_truth.cpu().numpy(), memnode_graph_pred_bin.cpu().numpy())
+        memnode_graph_loss = self.criterion(memnode_graph_prediction, memnode_graph_ground_truth)
+        memnode_pos_mask = memnode_graph_ground_truth > 0
+        memnode_neg_mask = ~memnode_pos_mask
+        memnode_pos_rate = memnode_pos_mask.float().mean().item()
+        memnode_pred_pos_rate = memnode_graph_pred_bin.float().mean().item()
+        memnode_pos_score = memnode_graph_prediction[memnode_pos_mask].mean().item() if torch.any(memnode_pos_mask) else float("nan")
+        memnode_neg_score = memnode_graph_prediction[memnode_neg_mask].mean().item() if torch.any(memnode_neg_mask) else float("nan")
+        memnode_ground_truth_np = memnode_graph_ground_truth.cpu().numpy()
+        memnode_prediction_np = memnode_graph_prediction.detach().cpu().numpy()
+        if np.unique(memnode_ground_truth_np).size > 1:
+            memnode_auc = roc_auc_score(memnode_ground_truth_np, memnode_prediction_np)
+            memnode_ap = average_precision_score(memnode_ground_truth_np, memnode_prediction_np)
+        else:
+            memnode_auc = float("nan")
+            memnode_ap = float("nan")
         
         ## Record metrics in total
         metrics_list[f"memnode_avg_precision"].append(memnode_graph_precision)
         metrics_list[f"memnode_avg_recall"].append(memnode_graph_recall)
         metrics_list[f"memnode_avg_f1"].append(memnode_graph_f1)
         metrics_list[f"memnode_avg_acc"].append(memnode_graph_acc)
+        metrics_list[f"memnode_avg_loss"].append(memnode_graph_loss.item())
+        metrics_list[f"memnode_avg_pos_rate"].append(memnode_pos_rate)
+        metrics_list[f"memnode_avg_pred_pos_rate"].append(memnode_pred_pos_rate)
+        metrics_list[f"memnode_avg_pos_score"].append(memnode_pos_score)
+        metrics_list[f"memnode_avg_neg_score"].append(memnode_neg_score)
+        metrics_list[f"memnode_avg_auc"].append(memnode_auc)
+        metrics_list[f"memnode_avg_ap"].append(memnode_ap)
 
 
     def _eval_predict_current_timestep(self, curr_snapshot: torch.Tensor):
@@ -101,5 +139,5 @@ class MemoryNodeTrainer(LinkPredTrainer):
     def early_stopping_checker(self, early_stopper) -> bool:
         if self.test_perf[self.val_first_metric] == 1:
             return True
-        
-        return super().early_stopping_checker(early_stopper)
+
+        return early_stopper.step_check(self._early_stop_metric, self.model, op_to_cont="dec")
