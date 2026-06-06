@@ -14,8 +14,8 @@ NUM_EPOCHS_TO_VIS=0
 ###################### Running-specific variables #########################
 EVAL_MODE=false
 CTDG_DO_SNAPSHOT_TRAINING=true
-# METHODS_TO_RUN=("CTDG/_edgebank" "CTDG/_dygformer" "CTDG/_ctan" "CTDG/_tgn" "CTDG/_tgat" "DTDG/_gcn" "DTDG/_gclstm" "DTDG/_egcn" "DTDG/_tgcn" "DTDG/_gat" "DTDG/_previous")
-METHODS_TO_RUN=("CTDG/_tgn")
+# METHODS_TO_RUN=("CTDG/_edgebank" "CTDG/_dygformer" "CTDG/_ctan" "CTDG/_tgn" "CTDG/_tgn_provids" "CTDG/_tgat" "DTDG/_gcn" "DTDG/_gclstm" "DTDG/_egcn" "DTDG/_tgcn" "DTDG/_gat" "DTDG/_previous")
+METHODS_TO_RUN=("CTDG/_tgn_provids")
 CLEAR_RESULT=true
 WANDB_ENTITY="cristoferivalentina5-danmarks-tekniske-universitet-dtu"
 ###########################################################################
@@ -65,7 +65,7 @@ do
                                         # As far as NODE_FEAT=ONE_HOT, it's not important what is the node feature dimension!
                                         for NODE_FEAT_DIM in 1
                                         do
-                                            for model in "CTDG/_dygformer" "CTDG/_tgn" "CTDG/_tgat"
+                                            for model in "CTDG/_dygformer" "CTDG/_tgn" "CTDG/_tgn_provids" "CTDG/_tgat"
                                             do
                                                 if [[ " ${METHODS_TO_RUN[@]} " =~ " ${model} " ]]; then
                                                     # Memory computation for methods implemented by DyGLib
