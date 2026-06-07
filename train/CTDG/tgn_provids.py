@@ -38,7 +38,7 @@ class TGNTrainer(CTDGTrainer):
                                                                       self.args.node_feat,
                                                                       self.args.node_feat_dim)
 
-        self.edge_feats = self.full_dataset.edge_feat.to(self.device)
+        self.edge_feats = self.full_dataset.edge_feat.float().to(self.device)
         self.t = self.full_dataset.t.to(self.device)
 
         edge_dim = self.full_dataset.edge_feat.size(-1)
