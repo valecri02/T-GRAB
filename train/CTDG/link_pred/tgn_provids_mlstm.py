@@ -3,7 +3,7 @@ from typing import Optional, Tuple
 import torch
 
 from ...CTDG.link_pred.trainer import LinkPredTrainer
-from ...CTDG.tgn_provids import TGNTrainer
+from ...CTDG.tgn_provids_mlstm import TGNTrainer
 from ...CTDG.trainer import NODE_EMB_MODEL_NAME
 
 

@@ -7,10 +7,10 @@ from torch.nn.modules import Module
 
 from ...dataset.CTDG.torch_dataset.link_pred.node_feat_static import ContinuousTimeLinkPredNodeFeatureStaticDataset
 from ...model.TGB import LastAggregator, LastNeighborLoader
-from ...model.TGB.provids import (
+from ...model.TGB.provids_mlstm import (
     GraphAttentionEmbeddingProvIDS,
     IdentityMessageProvIDS,
-    TGNMemoryProvIDS,
+    TGNMemoryProvIDSMLSTM,
     compute_provids_delta_t_stats,
 )
 from .trainer import CTDGTrainer
@@ -24,6 +24,8 @@ class TGNTrainer(CTDGTrainer):
         parser.add_argument('--num-neighbors', type=int, help='TGN: number of neighbors to sample for each node', default=20)
         parser.add_argument('--time-feat-dim', type=int, default=100, help='dimension of the time embedding')
         parser.add_argument('--memory-dim', type=int, default=100, help='dimension of the memory')
+        parser.add_argument('--mlstm-num-heads', type=int, default=4, help='Number of heads in the mLSTM memory updater')
+        parser.add_argument('--mlstm-state-max-nodes', type=int, default=None, help='Optional cap for cached mLSTM node states')
         parser.add_argument('--memory-enhancement', type=int, default=0, choices=[0, 2],
                             help='ProvIDS memory enhancement mode. 2 updates memory messages with GNN embeddings.')
         return parser
@@ -41,7 +43,7 @@ class TGNTrainer(CTDGTrainer):
                                                                       self.args.node_feat,
                                                                       self.args.node_feat_dim)
 
-        self.edge_feats = self.full_dataset.edge_feat.float().to(self.device)
+        self.edge_feats = self.full_dataset.edge_feat.to(self.device)
         self.t = self.full_dataset.t.to(self.device)
 
         edge_dim = self.full_dataset.edge_feat.size(-1)
@@ -50,7 +52,7 @@ class TGNTrainer(CTDGTrainer):
         mean_delta_t, std_delta_t = compute_provids_delta_t_stats(train_dataset_for_stats, init_time)
         edge_encoder = torch.nn.Linear(edge_dim, edge_dim).to(self.device)
 
-        memory = TGNMemoryProvIDS(
+        memory = TGNMemoryProvIDSMLSTM(
                     self.full_dataset.num_nodes,
                     edge_dim,
                     node_feat_dim,
@@ -60,7 +62,9 @@ class TGNTrainer(CTDGTrainer):
                                                           node_feat_dim,
                                                           self.args.time_feat_dim,
                                                           edge_encoder=edge_encoder),
-                    aggregator_module=LastAggregator()).to(self.device)
+                    aggregator_module=LastAggregator(),
+                    mlstm_num_heads=self.args.mlstm_num_heads,
+                    mlstm_state_max_nodes=self.args.mlstm_state_max_nodes).to(self.device)
 
         backbone = GraphAttentionEmbeddingProvIDS(
                 in_channels=node_feat_dim * 2,
@@ -82,4 +86,4 @@ class TGNTrainer(CTDGTrainer):
 
     def _get_run_save_dir(self) -> str:
         ctdgtrainer_run_save_dir = super(TGNTrainer, self)._get_run_save_dir()
-        return os.path.join(ctdgtrainer_run_save_dir, "tgn_provids")
+        return os.path.join(ctdgtrainer_run_save_dir, "tgn_provids_mlstm")

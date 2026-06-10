@@ -8,7 +8,7 @@ fi
 source $PWD/tgrab/bin/activate
 cd ../
 
-LAG=1
+LAG=256
 NUM_PATTERNS=4000
 
 python -m T-GRAB.dataset.DTDG.graph_generation.run cause_effect \
