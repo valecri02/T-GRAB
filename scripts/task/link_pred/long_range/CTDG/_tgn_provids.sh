@@ -42,6 +42,7 @@ CLEAR_RESULT=${20}
 NUM_NODES=${21}
 MEMORY_DIM=$NUM_NODES
 WANDB_ENTITY=${22}
+MESSAGE_AGGREGATOR=${23:-last}
 ARGS=(
     CTDG.link_pred.memory_node.tgn_provids
     --data="$DATA"
@@ -62,9 +63,11 @@ ARGS=(
     --dropout=0.1
     --time-feat-dim=$TIME_FEAT_DIM
     --memory-dim=$MEMORY_DIM
+    --memory-enhancement=2
+    --message-aggregator=$MESSAGE_AGGREGATOR
     --train-batch-size=$TRAIN_BATCH_SIZE
     --wandb-entity=$WANDB_ENTITY
-    --wandb-project="T-GRAB"
+    --wandb-project="T-GRAB_long_range"
 )
 
 # Training arguments

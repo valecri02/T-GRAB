@@ -9,6 +9,7 @@ from .provids import (
     IdentityMessageProvIDS,
     compute_provids_delta_t_stats,
 )
+from .msg_agg import SequentialAggregator
 from .tgn_memory import TGNMemory
 from .mlstm import MLSTMStateDictType, mLSTMMemoryAdapter
 
@@ -212,6 +213,34 @@ class TGNMemoryProvIDSMLSTM(TGNMemory):
         idx = torch.cat([src_s, src_d], dim=0)
         msg = torch.cat([msg_s, msg_d], dim=0)
         t = torch.cat([t_s, t_d], dim=0)
+
+        if isinstance(self.aggr_module, SequentialAggregator):
+            memory = self.memory[n_id]
+            last_update = self.last_update[n_id].clone()
+            state = self._get_mlstm_state(n_id)
+            local_idx = self._assoc[idx]
+
+            while msg.numel() > 0:
+                active_nodes, active_msg, active_t, msg, local_idx, t = self.aggr_module.select_next(
+                    msg, local_idx, t
+                )
+                if active_nodes.numel() == 0:
+                    break
+
+                memory_new, state_new = self.memory_updater(
+                    active_msg,
+                    memory[active_nodes],
+                    self._index_mlstm_state(state, active_nodes),
+                )
+                memory = memory.index_copy(0, active_nodes, memory_new)
+                state = self._index_copy_mlstm_state(state, active_nodes, state_new)
+                last_update[active_nodes] = active_t
+
+            if commit_mlstm_state:
+                self._set_mlstm_state(n_id, state)
+
+            return memory, last_update
+
         aggr = self.aggr_module(msg, self._assoc[idx], t, n_id.size(0))
 
         state = self._get_mlstm_state(n_id)
@@ -222,6 +251,44 @@ class TGNMemoryProvIDSMLSTM(TGNMemory):
         dim_size = self.last_update.size(0)
         last_update = scatter(t, idx, 0, dim_size, reduce="max")[n_id]
         return memory, last_update
+
+    def _index_mlstm_state(self, state: MLSTMStateDictType, idx: Tensor):
+        c_state, n_state, m_state = state["mlstm_state"]
+        conv_state = state.get("conv_state")
+        return {
+            "mlstm_state": (
+                c_state[idx],
+                n_state[idx],
+                m_state[idx],
+            ),
+            "conv_state": None if conv_state is None else (conv_state[0][idx],),
+        }
+
+    def _index_copy_mlstm_state(
+        self,
+        state: MLSTMStateDictType,
+        idx: Tensor,
+        update: MLSTMStateDictType,
+    ) -> MLSTMStateDictType:
+        c_state, n_state, m_state = state["mlstm_state"]
+        c_new, n_new, m_new = update["mlstm_state"]
+        conv_state = state.get("conv_state")
+        conv_new = update.get("conv_state")
+
+        conv_state_new = None
+        if conv_state is not None:
+            conv_state_new = conv_state
+            if conv_new is not None:
+                conv_state_new = (conv_state[0].index_copy(0, idx, conv_new[0]),)
+
+        return {
+            "mlstm_state": (
+                c_state.index_copy(0, idx, c_new),
+                n_state.index_copy(0, idx, n_new),
+                m_state.index_copy(0, idx, m_new),
+            ),
+            "conv_state": conv_state_new,
+        }
 
     def update_state(self, src: Tensor, dst: Tensor, t: Tensor, raw_msg: Tensor):
         self._store_mode = "base"

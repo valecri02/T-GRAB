@@ -6,7 +6,7 @@ import torch
 from torch.nn.modules import Module
 
 from ...dataset.CTDG.torch_dataset.link_pred.node_feat_static import ContinuousTimeLinkPredNodeFeatureStaticDataset
-from ...model.TGB import GraphAttentionEmbedding, TGNMemory, LastAggregator, IdentityMessage, LastNeighborLoader
+from ...model.TGB import GraphAttentionEmbedding, TGNMemory, LastAggregator, MeanAggregator, IdentityMessage, LastNeighborLoader
 from .trainer import CTDGTrainer
 
 class TGNTrainer(CTDGTrainer):
@@ -18,6 +18,8 @@ class TGNTrainer(CTDGTrainer):
         parser.add_argument('--num-neighbors', type=int, help='TGN: number of neighbors to sample for each node', default=20)
         parser.add_argument('--time-feat-dim', type=int, default=100, help='dimension of the time embedding')
         parser.add_argument('--memory-dim', type=int, default=100, help='dimension of the memory')
+        parser.add_argument('--message-aggregator', choices=['last', 'mean'], default='last',
+                            help='TGN: aggregate multiple messages for the same node with last or mean.')
         return parser
 
     
@@ -32,6 +34,8 @@ class TGNTrainer(CTDGTrainer):
         self.edge_feats = self.full_dataset.edge_feat.to(self.device)
         self.t = self.full_dataset.t.to(self.device)
 
+        aggregator_module = MeanAggregator() if self.args.message_aggregator == 'mean' else LastAggregator()
+
         memory = TGNMemory(
                     self.full_dataset.num_nodes,
                     self.full_dataset.edge_feat.size(-1),
@@ -41,7 +45,7 @@ class TGNTrainer(CTDGTrainer):
                     message_module=IdentityMessage(self.full_dataset.edge_feat.size(-1), 
                                                    self.full_dataset._node_feat.size(-1), 
                                                    self.args.time_feat_dim),
-                    aggregator_module=LastAggregator()).to(self.device)
+                    aggregator_module=aggregator_module).to(self.device)
 
         backbone = GraphAttentionEmbedding(
                 in_channels=self.full_dataset._node_feat.size(-1),

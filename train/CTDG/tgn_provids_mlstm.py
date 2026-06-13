@@ -6,7 +6,7 @@ import torch
 from torch.nn.modules import Module
 
 from ...dataset.CTDG.torch_dataset.link_pred.node_feat_static import ContinuousTimeLinkPredNodeFeatureStaticDataset
-from ...model.TGB import LastAggregator, LastNeighborLoader
+from ...model.TGB import LastAggregator, MeanAggregator, SequentialAggregator, LastNeighborLoader
 from ...model.TGB.provids_mlstm import (
     GraphAttentionEmbeddingProvIDS,
     IdentityMessageProvIDS,
@@ -26,6 +26,8 @@ class TGNTrainer(CTDGTrainer):
         parser.add_argument('--memory-dim', type=int, default=100, help='dimension of the memory')
         parser.add_argument('--mlstm-num-heads', type=int, default=4, help='Number of heads in the mLSTM memory updater')
         parser.add_argument('--mlstm-state-max-nodes', type=int, default=None, help='Optional cap for cached mLSTM node states')
+        parser.add_argument('--message-aggregator', choices=['last', 'mean', 'sequence'], default='last',
+                            help='TGN: aggregate messages with last/mean or process them sequentially by timestamp.')
         parser.add_argument('--memory-enhancement', type=int, default=0, choices=[0, 2],
                             help='ProvIDS memory enhancement mode. 2 updates memory messages with GNN embeddings.')
         return parser
@@ -52,6 +54,13 @@ class TGNTrainer(CTDGTrainer):
         mean_delta_t, std_delta_t = compute_provids_delta_t_stats(train_dataset_for_stats, init_time)
         edge_encoder = torch.nn.Linear(edge_dim, edge_dim).to(self.device)
 
+        aggregator_modules = {
+            'last': LastAggregator,
+            'mean': MeanAggregator,
+            'sequence': SequentialAggregator,
+        }
+        aggregator_module = aggregator_modules[self.args.message_aggregator]()
+
         memory = TGNMemoryProvIDSMLSTM(
                     self.full_dataset.num_nodes,
                     edge_dim,
@@ -62,7 +71,7 @@ class TGNTrainer(CTDGTrainer):
                                                           node_feat_dim,
                                                           self.args.time_feat_dim,
                                                           edge_encoder=edge_encoder),
-                    aggregator_module=LastAggregator(),
+                    aggregator_module=aggregator_module,
                     mlstm_num_heads=self.args.mlstm_num_heads,
                     mlstm_state_max_nodes=self.args.mlstm_state_max_nodes).to(self.device)
 

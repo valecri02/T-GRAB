@@ -5,6 +5,7 @@ from torch_geometric.nn import TransformerConv
 from torch_geometric.utils import scatter
 
 from ..node_emb import NodeEmbeddingModel
+from .msg_agg import SequentialAggregator
 from .tgn_memory import TGNMemory
 
 
@@ -65,6 +66,27 @@ class TGNMemoryProvIDS(TGNMemory):
         idx = torch.cat([src_s, src_d], dim=0)
         msg = torch.cat([msg_s, msg_d], dim=0)
         t = torch.cat([t_s, t_d], dim=0)
+
+        if isinstance(self.aggr_module, SequentialAggregator):
+            memory = self.memory[n_id]
+            last_update = self.last_update[n_id].clone()
+            local_idx = self._assoc[idx]
+
+            while msg.numel() > 0:
+                active_nodes, active_msg, active_t, msg, local_idx, t = self.aggr_module.select_next(
+                    msg, local_idx, t
+                )
+                if active_nodes.numel() == 0:
+                    break
+                memory = memory.index_copy(
+                    0,
+                    active_nodes,
+                    self.memory_updater(active_msg, memory[active_nodes]),
+                )
+                last_update[active_nodes] = active_t
+
+            return memory, last_update
+
         aggr = self.aggr_module(msg, self._assoc[idx], t, n_id.size(0))
 
         memory = self.memory_updater(aggr, self.memory[n_id])

@@ -24,3 +24,30 @@ class LastAggregator(torch.nn.Module):
 class MeanAggregator(torch.nn.Module):
     def forward(self, msg: Tensor, index: Tensor, t: Tensor, dim_size: int):
         return scatter(msg, index, dim=0, dim_size=dim_size, reduce="mean")
+
+
+class SequentialAggregator(torch.nn.Module):
+    def select_next(self, msg: Tensor, index: Tensor, t: Tensor):
+        if msg.numel() == 0:
+            empty_index = index.new_empty((0,))
+            empty_msg = msg.new_empty((0, msg.size(-1)))
+            empty_t = t.new_empty((0,))
+            return empty_index, empty_msg, empty_t, empty_msg, empty_index, empty_t
+
+        selected = []
+        for node_idx in index.unique(sorted=True).tolist():
+            msg_idx = (index == node_idx).nonzero(as_tuple=False).view(-1)
+            selected.append(msg_idx[torch.argmin(t[msg_idx])])
+
+        selected = torch.stack(selected)
+        keep = torch.ones(msg.size(0), dtype=torch.bool, device=msg.device)
+        keep[selected] = False
+
+        return (
+            index[selected],
+            msg[selected],
+            t[selected],
+            msg[keep],
+            index[keep],
+            t[keep],
+        )

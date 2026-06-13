@@ -43,6 +43,7 @@ NUM_NODES=${21}
 MEMORY_DIM=$NUM_NODES
 WANDB_ENTITY=${22}
 MLSTM_NUM_HEADS=${23:-4}
+MESSAGE_AGGREGATOR=${24:-last}
 ARGS=(
     CTDG.link_pred.memory_node.tgn_provids_mlstm
     --data="$DATA"
@@ -65,9 +66,10 @@ ARGS=(
     --memory-dim=$MEMORY_DIM
     --mlstm-num-heads=$MLSTM_NUM_HEADS
     --memory-enhancement=2
+    --message-aggregator=$MESSAGE_AGGREGATOR
     --train-batch-size=$TRAIN_BATCH_SIZE
     --wandb-entity=$WANDB_ENTITY
---wandb-project="T-GRAB_long_range"
+    --wandb-project="T-GRAB_long_range"
 )
 
 # Training arguments

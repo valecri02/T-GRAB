@@ -6,7 +6,7 @@ import torch
 from torch.nn.modules import Module
 
 from ...dataset.CTDG.torch_dataset.link_pred.node_feat_static import ContinuousTimeLinkPredNodeFeatureStaticDataset
-from ...model.TGB import LastAggregator, LastNeighborLoader
+from ...model.TGB import LastAggregator, MeanAggregator, SequentialAggregator, LastNeighborLoader
 from ...model.TGB.provids import (
     GraphAttentionEmbeddingProvIDS,
     IdentityMessageProvIDS,
@@ -26,6 +26,8 @@ class TGNTrainer(CTDGTrainer):
         parser.add_argument('--memory-dim', type=int, default=100, help='dimension of the memory')
         parser.add_argument('--memory-enhancement', type=int, default=0, choices=[0, 2],
                             help='ProvIDS memory enhancement mode. 2 updates memory messages with GNN embeddings.')
+        parser.add_argument('--message-aggregator', choices=['last', 'mean', 'sequence'], default='last',
+                            help='TGN: aggregate messages with last/mean or process them sequentially by timestamp.')
         return parser
 
     def get_model(self) -> Dict[str, Module]:
@@ -50,6 +52,13 @@ class TGNTrainer(CTDGTrainer):
         mean_delta_t, std_delta_t = compute_provids_delta_t_stats(train_dataset_for_stats, init_time)
         edge_encoder = torch.nn.Linear(edge_dim, edge_dim).to(self.device)
 
+        aggregator_modules = {
+            'last': LastAggregator,
+            'mean': MeanAggregator,
+            'sequence': SequentialAggregator,
+        }
+        aggregator_module = aggregator_modules[self.args.message_aggregator]()
+
         memory = TGNMemoryProvIDS(
                     self.full_dataset.num_nodes,
                     edge_dim,
@@ -60,7 +69,7 @@ class TGNTrainer(CTDGTrainer):
                                                           node_feat_dim,
                                                           self.args.time_feat_dim,
                                                           edge_encoder=edge_encoder),
-                    aggregator_module=LastAggregator()).to(self.device)
+                    aggregator_module=aggregator_module).to(self.device)
 
         backbone = GraphAttentionEmbeddingProvIDS(
                 in_channels=node_feat_dim * 2,
