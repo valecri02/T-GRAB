@@ -220,13 +220,9 @@ class TGNMemoryProvIDSMLSTM(TGNMemory):
             state = self._get_mlstm_state(n_id)
             local_idx = self._assoc[idx]
 
-            while msg.numel() > 0:
-                active_nodes, active_msg, active_t, msg, local_idx, t = self.aggr_module.select_next(
-                    msg, local_idx, t
-                )
-                if active_nodes.numel() == 0:
-                    break
-
+            for active_nodes, active_msg, active_t in self.aggr_module.iter_by_timestamp(
+                msg, local_idx, t
+            ):
                 memory_new, state_new = self.memory_updater(
                     active_msg,
                     memory[active_nodes],

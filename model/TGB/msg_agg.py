@@ -27,19 +27,30 @@ class MeanAggregator(torch.nn.Module):
 
 
 class SequentialAggregator(torch.nn.Module):
+    @staticmethod
+    def _empty_selection(msg: Tensor, index: Tensor, t: Tensor):
+        empty_index = index.new_empty((0,))
+        empty_msg = msg.new_empty((0, msg.size(-1)))
+        empty_t = t.new_empty((0,))
+        return empty_index, empty_msg, empty_t
+
+    @staticmethod
+    def _order_by_node_time(index: Tensor, t: Tensor) -> Tensor:
+        order = torch.arange(index.size(0), device=index.device)
+        order = order[torch.argsort(t[order], stable=True)]
+        order = order[torch.argsort(index[order], stable=True)]
+        return order
+
     def select_next(self, msg: Tensor, index: Tensor, t: Tensor):
         if msg.numel() == 0:
-            empty_index = index.new_empty((0,))
-            empty_msg = msg.new_empty((0, msg.size(-1)))
-            empty_t = t.new_empty((0,))
+            empty_index, empty_msg, empty_t = self._empty_selection(msg, index, t)
             return empty_index, empty_msg, empty_t, empty_msg, empty_index, empty_t
 
-        selected = []
-        for node_idx in index.unique(sorted=True).tolist():
-            msg_idx = (index == node_idx).nonzero(as_tuple=False).view(-1)
-            selected.append(msg_idx[torch.argmin(t[msg_idx])])
-
-        selected = torch.stack(selected)
+        order = self._order_by_node_time(index, t)
+        sorted_index = index[order]
+        _, counts = sorted_index.unique_consecutive(return_counts=True)
+        offsets = torch.cat([counts.new_zeros(1), counts.cumsum(dim=0)[:-1]])
+        selected = order[offsets]
         keep = torch.ones(msg.size(0), dtype=torch.bool, device=msg.device)
         keep[selected] = False
 
@@ -51,3 +62,17 @@ class SequentialAggregator(torch.nn.Module):
             index[keep],
             t[keep],
         )
+
+    def iter_by_timestamp(self, msg: Tensor, index: Tensor, t: Tensor):
+        if msg.numel() == 0:
+            return
+
+        order = self._order_by_node_time(index, t)
+        sorted_index = index[order]
+        active_nodes, counts = sorted_index.unique_consecutive(return_counts=True)
+        offsets = torch.cat([counts.new_zeros(1), counts.cumsum(dim=0)[:-1]])
+
+        for rank in range(int(counts.max().item())):
+            active_mask = counts > rank
+            selected = order[offsets[active_mask] + rank]
+            yield active_nodes[active_mask], msg[selected], t[selected]
