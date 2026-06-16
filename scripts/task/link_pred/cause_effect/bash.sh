@@ -18,6 +18,8 @@ CTDG_DO_SNAPSHOT_TRAINING=true
 METHODS_TO_RUN=("CTDG/_tgn_provids_mlstm")
 CLEAR_RESULT=true
 WANDB_ENTITY="cristoferivalentina5-danmarks-tekniske-universitet-dtu"
+MLSTM_NUM_HEADS=4
+MESSAGE_AGGREGATOR="sequence"
 ###########################################################################
 
 VAL_FIRST_METRIC="memnode_avg_f1"
@@ -33,11 +35,11 @@ do
         do
             for TEST_INDUCTIVE_NUM_NODES_RATIO in 0.0
             do
-                for ER_PROB in 0.002
+                for ER_PROB in 0.01
                 do
                     for ER_PROB_INDUCTIVE in 0.0
                     do
-                        for LAG in 16 64
+                        for LAG in 4 16 64 265
                         do
                             for NUM_PATTERNS in 4000
                             do
@@ -94,6 +96,13 @@ do
                                                                             else
                                                                                 NUM_HEADS=3 #  To enable the sum of node_feat_dim and time_feat_dim be divided by num_heads!
                                                                             fi
+                                                                            EXTRA_ARGS=()
+                                                                            if [[ "${model}" = "CTDG/_tgn_provids" ]]; then
+                                                                                EXTRA_ARGS=("$MESSAGE_AGGREGATOR")
+                                                                            elif [[ "${model}" = "CTDG/_tgn_provids_mlstm" ]]; then
+                                                                                EXTRA_ARGS=("$MLSTM_NUM_HEADS" "$MESSAGE_AGGREGATOR")
+                                                                            fi
+
                                                                             ./scripts/task/link_pred/cause_effect/$model.sh \
                                                                                 "$DATA" \
                                                                                 $SEED \
@@ -116,7 +125,8 @@ do
                                                                                 $MAX_INPUT_SEQ_LEN \
                                                                                 $CLEAR_RESULT \
                                                                                 $NUM_NODES \
-                                                                                $WANDB_ENTITY
+                                                                                $WANDB_ENTITY \
+                                                                                "${EXTRA_ARGS[@]}"
                                                                         done
                                                                     done
                                                                 done

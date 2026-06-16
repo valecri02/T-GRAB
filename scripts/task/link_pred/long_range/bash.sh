@@ -18,6 +18,8 @@ CTDG_DO_SNAPSHOT_TRAINING=true
 METHODS_TO_RUN=("CTDG/_tgn_provids")
 CLEAR_RESULT=true
 WANDB_ENTITY="cristoferivalentina5-danmarks-tekniske-universitet-dtu"
+MLSTM_NUM_HEADS=4
+MESSAGE_AGGREGATOR="mean"
 ###########################################################################
 
 VAL_FIRST_METRIC="memnode_avg_f1"
