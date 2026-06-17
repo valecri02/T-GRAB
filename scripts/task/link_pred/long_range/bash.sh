@@ -89,6 +89,12 @@ do
                                                     do
                                                         for TRAIN_BATCH_SIZE in 1
                                                         do
+EXTRA_ARGS=()
+                                                            if [[ "${model}" = "CTDG/_tgn_provids" ]]; then
+                                                                EXTRA_ARGS=("$MESSAGE_AGGREGATOR")
+                                                            elif [[ "${model}" = "CTDG/_tgn_provids_mlstm" ]]; then
+                                                                EXTRA_ARGS=("$MLSTM_NUM_HEADS" "$MESSAGE_AGGREGATOR")
+                                                            fi
                                                             NUM_HEADS=2
                                                             ./scripts/task/link_pred/long_range/$model.sh \
                                                                 "$DATA" \
@@ -112,7 +118,8 @@ do
                                                                 $MAX_INPUT_SEQ_LEN \
                                                                 $CLEAR_RESULT \
                                                                 $NUM_NODES \
-                                                                $WANDB_ENTITY
+                                                                $WANDB_ENTITY \
+                                                                "${EXTRA_ARGS[@]}"
                                                         done
                                                     done
                                                 done

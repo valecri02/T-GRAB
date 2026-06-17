@@ -1,0 +1,11 @@
+trainer: CTDG.link_pred.memory_node.tgn_provids_mlstm
+num_units: 1
+num_heads: 3
+dropout: 0.1
+num_neighbors: 20
+time_feat_dim: 100
+memory_dim: 100
+memory_enhancement: 2
+message_aggregator: mean
+mlstm_num_heads: 4
+mlstm_state_max_nodes: null

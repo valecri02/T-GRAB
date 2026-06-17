@@ -1,0 +1,15 @@
+num_epoch: 100000
+patience: 50
+tolerance: 1e-6
+num_run: 1
+lr: 1e-4
+device: default
+val_first_metric: memnode_avg_f1
+train_eval_gap: 1
+replay_memory_before_eval: true
+clear_results: false
+eval_mode: false
+wandb_entity: cristoferivalentina5-danmarks-tekniske-universitet-dtu
+wandb_log_interval: 30
+node_pos: circular_layout
+num_epochs_to_visualize: 0
