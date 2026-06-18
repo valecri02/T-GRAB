@@ -83,7 +83,8 @@ class TGNTrainer(CTDGTrainer):
                 mean_delta_t=mean_delta_t,
                 std_delta_t=std_delta_t,
                 encode_edge=True,
-                edge_encoder=edge_encoder).to(self.device)
+                edge_encoder=edge_encoder,
+                num_layers=self.args.num_units).to(self.device)
 
         self.neighbor_loader = LastNeighborLoader(self.full_dataset.num_nodes, size=self.args.num_neighbors, device=self.device)
         self.assoc = torch.empty(self.full_dataset.num_nodes, dtype=torch.long, device=self.device)

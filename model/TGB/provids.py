@@ -179,8 +179,11 @@ class GraphAttentionEmbeddingProvIDS(NodeEmbeddingModel):
         std_delta_t=1.,
         encode_edge=False,
         edge_encoder=None,
+        num_layers=1,
     ):
         super().__init__()
+        if num_layers < 1:
+            raise ValueError(f"num_layers must be >= 1, got {num_layers}.")
         self.time_enc = time_enc
         self.mean_delta_t = mean_delta_t
         self.std_delta_t = std_delta_t
@@ -191,13 +194,17 @@ class GraphAttentionEmbeddingProvIDS(NodeEmbeddingModel):
         num_heads = 2
         self.out_channels = out_channels + (out_channels % num_heads)
 
-        self.conv = TransformerConv(
-            in_channels,
-            self.out_channels // num_heads,
-            heads=num_heads,
-            dropout=0.1,
-            edge_dim=edge_dim,
-        )
+        self.convs = torch.nn.ModuleList()
+        for layer_idx in range(num_layers):
+            self.convs.append(
+                TransformerConv(
+                    in_channels if layer_idx == 0 else self.out_channels,
+                    self.out_channels // num_heads,
+                    heads=num_heads,
+                    dropout=0.1,
+                    edge_dim=edge_dim,
+                )
+            )
 
     @property
     def out_dimension(self) -> int:
@@ -211,7 +218,9 @@ class GraphAttentionEmbeddingProvIDS(NodeEmbeddingModel):
             msg = msg.to(dtype=self.edge_encoder.weight.dtype)
             msg = self.edge_encoder(msg)
         edge_attr = torch.cat([rel_t_enc, msg], dim=-1)
-        return self.conv(x, edge_index, edge_attr)
+        for conv in self.convs:
+            x = conv(x, edge_index, edge_attr)
+        return x
 
 
 def compute_provids_delta_t_stats(train_dataset, init_time):
