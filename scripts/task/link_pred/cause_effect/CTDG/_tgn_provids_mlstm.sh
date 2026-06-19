@@ -9,8 +9,8 @@ RUN_SCRIPT=T-GRAB.train.run
 NODE_POS=circular_layout
 
 # Load module, env
-module load python/3.8
-source $PWD/tgrab/bin/activate
+# module load python/3.8
+# source $PWD/tgrab/bin/activate
 cd ../
 
 DATA="$1"
@@ -70,7 +70,7 @@ ARGS=(
     --train-batch-size=$TRAIN_BATCH_SIZE
     --message-aggregator=$MESSAGE_AGGREGATOR
     --wandb-entity=$WANDB_ENTITY
-    --wandb-project="T-GRAB_m2"
+    --wandb-project="T-GRAB_ce_final"
 )
 
 # Training arguments

@@ -8,21 +8,21 @@ fi
 echo "Start submitting cause-and-effect dataset generation..."
 sleep 2
 
-NUM_NODES=101
+NUM_NODES=100
 
 for VAL_RATIO in 0.1
 do
     for TEST_RATIO in 0.1
     do
-        for TEST_INDUCTIVE_RATIO in 0.1
+        for TEST_INDUCTIVE_RATIO in 0
         do
-            for TEST_INDUCTIVE_NUM_NODES_RATIO in 0.1
+            for TEST_INDUCTIVE_NUM_NODES_RATIO in 0
             do
                 for ER_PROB in 0.002
                 do
                     for ER_PROB_INDUCTIVE in 0.02
                     do
-                        for LAG in 4
+                        for LAG in 1 4 16 64 256
                         do
                             for NUM_PATTERNS in 4000
                             do

@@ -5,8 +5,8 @@
 #SBATCH --partition=long-cpu
 
 # Load module and environment
-module load python/3.8
-source $PWD/tgrab/bin/activate
+# module load python/3.8
+# source $PWD/tgrab/bin/activate
 cd ../
 
 python -m T-GRAB.dataset.DTDG.graph_generation.run long_range \

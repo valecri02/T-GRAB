@@ -9,8 +9,8 @@ RUN_SCRIPT=T-GRAB.train.run
 NODE_POS=circular_layout
 
 # Load module, env
-module load python/3.8
-source $PWD/tgrab/bin/activate
+# module load python/3.8
+# source $PWD/tgrab/bin/activate
 cd ../
 
 DATA="$1"
@@ -63,12 +63,13 @@ ARGS=(
     --num-heads=$NUM_HEADS
     --dropout=0.1
     --time-feat-dim=$TIME_FEAT_DIM
+    --memory-enhancement=2
     --memory-dim=$MEMORY_DIM
     --memory-enhancement=2
     --message-aggregator=$MESSAGE_AGGREGATOR
     --train-batch-size=$TRAIN_BATCH_SIZE
     --wandb-entity=$WANDB_ENTITY
-    --wandb-project="T-GRAB_m2"
+    --wandb-project="T-GRAB_ce_final"
 )
 
 # Training arguments

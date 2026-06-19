@@ -12,7 +12,7 @@ NODE_POS=circular_layout
 # Load module, env
 module load python/3.8
 source $HOME/envs/tsa/bin/activate
-cd $HOME/lab
+cd ..
 
 # Edge bank scripts
 DATA=$1

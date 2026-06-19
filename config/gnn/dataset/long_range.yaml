@@ -1,5 +1,5 @@
-root_load_save_dir: /Users/valentinacristoferi/THESIS/T-GRAB/scratch
-data_loc: /Users/valentinacristoferi/THESIS/T-GRAB/scratch/data
+root_load_save_dir: /work3/s253892/T-GRAB/scratch
+data_loc: /work3/s253892/T-GRAB/scratch/data
 
 lag: 8
 branch_len: 4

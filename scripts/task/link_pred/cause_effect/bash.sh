@@ -1,3 +1,28 @@
+#!/bin/bash
+### LSF options
+#BSUB -q gpuv100
+#BSUB -J ce_mlstm_4_s
+#BSUB -o ce_mlstm_4_s_%J.out
+#BSUB -e ce_mlstm_4_s_%J.err
+#BSUB -n 4
+#BSUB -R "span[hosts=1]"
+#BSUB -R "rusage[mem=5GB]"
+#BSUB -M 5GB
+#BSUB -gpu "num=1:mode=exclusive_process"
+#BSUB -W 24:00
+#BSUB -B
+#BSUB -N
+
+set -euo pipefail
+
+module purge
+
+module load cuda/11.7
+
+# Conda setup
+source ~/miniforge3/bin/activate
+conda activate tgrab
+
 export ROOT_LOAD_SAVE_DIR="$PWD/scratch/"
 export SCRIPT_LOC=scripts/task/link_pred/
 export DATA_LOC=$PWD/scratch/data/
@@ -12,10 +37,13 @@ task=cause_effect
 NUM_EPOCHS_TO_VIS=0
 
 ###################### Running-specific variables #########################
+export WANDB_API_KEY=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
+wandb login --verify
 EVAL_MODE=false
 CTDG_DO_SNAPSHOT_TRAINING=true
 # METHODS_TO_RUN=("CTDG/_edgebank" "CTDG/_dygformer" "CTDG/_ctan" "CTDG/_tgn" "CTDG/_tgn_provids" "CTDG/_tgn_provids_mlstm" "CTDG/_tgat" "DTDG/_gcn" "DTDG/_gclstm" "DTDG/_egcn" "DTDG/_tgcn" "DTDG/_gat" "DTDG/_previous")
-METHODS_TO_RUN=("CTDG/_tgn_provids_mlstm")
+METHODS_TO_RUN=("CTDG/_edgebank")
+
 CLEAR_RESULT=true
 WANDB_ENTITY="cristoferivalentina5-danmarks-tekniske-universitet-dtu"
 MLSTM_NUM_HEADS=4
@@ -35,11 +63,11 @@ do
         do
             for TEST_INDUCTIVE_NUM_NODES_RATIO in 0.0
             do
-                for ER_PROB in 0.01
+                for ER_PROB in 0.002
                 do
                     for ER_PROB_INDUCTIVE in 0.0
                     do
-                        for LAG in 4 16 64 265
+                        for LAG in 4 # 4 16 32 add 24
                         do
                             for NUM_PATTERNS in 4000
                             do

@@ -48,9 +48,9 @@ hydra:
   job:
     chdir: false
   run:
-    dir: outputs/tgrab_experiment
+    dir: /work3/s253892/T-GRAB/scratch/res/hydra
   sweep:
-    dir: outputs/tgrab_experiment_sweep
+    dir: /work3/s253892/T-GRAB/scratch/res/hydra/multirun
     subdir: ${hydra.job.num}
   launcher:
     n_jobs: 1
