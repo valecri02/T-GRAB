@@ -199,3 +199,8 @@ scratch/
 
 data/
 results/
+
+ce*
+lr*
+m2*
+mLSTM*

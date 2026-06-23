@@ -42,7 +42,7 @@ DATASET="${DATASET:-cause_effect}"
 MODELS="${MODELS:-tgn_provids,tgn_provids_mlstm}"
 
 # Choose one or more message aggregators: last, mean, sequence.
-MESSAGE_AGGREGATOR="${MESSAGE_AGGREGATOR:-last}"
+MESSAGE_AGGREGATOR="${MESSAGE_AGGREGATOR:-sequence}"
 
 # Choose one or more memory modes. 0 is plain TGN-style memory, 2 is m2/ProvIDS-enhanced memory.
 MEMORY_ENHANCEMENT="${MEMORY_ENHANCEMENT:-2}"
@@ -51,17 +51,8 @@ MEMORY_ENHANCEMENT="${MEMORY_ENHANCEMENT:-2}"
 # "model.num_units=$NUM_UNITS"
 # NUM_UNITS="${NUM_UNITS:-2}"
 
-# Choose one or more message aggregators: last, mean, sequence.
-MESSAGE_AGGREGATOR="${MESSAGE_AGGREGATOR:-sequence}"
-
-# Choose one or more memory modes. 0 is plain TGN-style memory, 2 is m2/ProvIDS-enhanced memory.
-MEMORY_ENHANCEMENT="${MEMORY_ENHANCEMENT:-2}"
-
-# Choose one or more ProvIDS GNN layers.
-NUM_UNITS="${NUM_UNITS:-1}"
-
 # Number of concurrent Hydra jobs inside this shell/slurm allocation.
-N_JOBS="${N_JOBS:-2}"
+N_JOBS="${N_JOBS:-4}"
 
 COMMON_OVERRIDES=(
   "model=$MODELS"
@@ -70,6 +61,7 @@ COMMON_OVERRIDES=(
   "hydra.launcher.n_jobs=$N_JOBS"
   "training.replay_memory_before_eval"=false
   "training.lr"=5e-5
+  "training.clear_results"=false
 )
 
 if [[ "$DATASET" == "cause_effect" ]]; then
