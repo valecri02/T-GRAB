@@ -12,6 +12,7 @@ er_prob: 0.002
 er_prob_inductive: 0.0
 seed: 3457
 wandb_project: T-GRAB_ce_final
+trainer_package: CTDG.link_pred.memory_node
 
 data: (${.lag}, ${.num_patterns})/cause_effect-${.num_nodes}n-${.val_ratio}vr-${.test_ratio}tr-${.test_inductive_ratio}tir-${.test_inductive_num_nodes_ratio}tinnr-${.er_prob}ep-${.er_prob_inductive}epi
 node_feat: ONE_HOT

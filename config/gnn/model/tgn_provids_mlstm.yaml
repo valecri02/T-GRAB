@@ -1,4 +1,4 @@
-trainer: CTDG.link_pred.memory_node.tgn_provids_mlstm
+trainer_name: tgn_provids_mlstm
 num_units: 1
 num_heads: 3
 dropout: 0.1

@@ -1,0 +1,17 @@
+root_load_save_dir: /Users/valentinacristoferi/THESIS/T-GRAB/scratch
+data_loc: /Users/valentinacristoferi/THESIS/T-GRAB/scratch/data
+
+lag: 8
+branch_len: 8
+num_samples: 1000
+num_nodes: 100
+num_branches: 6
+val_ratio: 0.1
+test_ratio: 0.1
+seed: 1235
+wandb_project: T-GRAB_ordered_long_range
+trainer_package: CTDG.link_pred.ordered_long_range
+
+data: (${.lag}, ${.branch_len})/ordered_long_range-${.num_samples}ns-${.num_nodes}nn-${.num_branches}nb-${.val_ratio}vr-${.test_ratio}tr
+node_feat: ONE_HOT
+node_feat_dim: 1

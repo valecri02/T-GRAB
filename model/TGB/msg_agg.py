@@ -69,10 +69,24 @@ class SequentialAggregator(torch.nn.Module):
 
         order = self._order_by_node_time(index, t)
         sorted_index = index[order]
-        active_nodes, counts = sorted_index.unique_consecutive(return_counts=True)
+        sorted_t = t[order]
+
+        # Snapshot-based datasets can contain many messages for the same node
+        # with exactly the same timestamp. There is no meaningful temporal
+        # order inside such a bucket, so aggregate it before recurrent updates.
+        is_group_start = torch.ones(order.size(0), dtype=torch.bool, device=order.device)
+        is_group_start[1:] = (sorted_index[1:] != sorted_index[:-1]) | (sorted_t[1:] != sorted_t[:-1])
+        group_id = is_group_start.cumsum(dim=0) - 1
+        num_groups = int(group_id[-1].item()) + 1
+
+        grouped_msg = scatter(msg[order], group_id, dim=0, dim_size=num_groups, reduce="mean")
+        grouped_index = sorted_index[is_group_start]
+        grouped_t = sorted_t[is_group_start]
+
+        active_nodes, counts = grouped_index.unique_consecutive(return_counts=True)
         offsets = torch.cat([counts.new_zeros(1), counts.cumsum(dim=0)[:-1]])
 
         for rank in range(int(counts.max().item())):
             active_mask = counts > rank
-            selected = order[offsets[active_mask] + rank]
-            yield active_nodes[active_mask], msg[selected], t[selected]
+            selected = offsets[active_mask] + rank
+            yield active_nodes[active_mask], grouped_msg[selected], grouped_t[selected]

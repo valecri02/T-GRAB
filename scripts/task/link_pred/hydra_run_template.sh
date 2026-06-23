@@ -34,8 +34,8 @@ export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
 export MKL_NUM_THREADS="${MKL_NUM_THREADS:-1}"
 export TGRAB_ROOT_LOAD_SAVE_DIR="${TGRAB_ROOT_LOAD_SAVE_DIR:-$REPO_DIR/scratch}"
 
-# Choose one of: cause_effect, long_range
-DATASET="${DATASET:-long_range}"
+# Choose one of: cause_effect, long_range, ordered_long_range
+DATASET="${DATASET:-cause_effect}"
 
 # Choose one or more model configs.
 # MODELS="${MODELS:-tgn_provids,tgn_provids_mlstm}"
@@ -50,6 +50,15 @@ MEMORY_ENHANCEMENT="${MEMORY_ENHANCEMENT:-2}"
 # Choose one or more ProvIDS GNN layers.
 # "model.num_units=$NUM_UNITS"
 # NUM_UNITS="${NUM_UNITS:-2}"
+
+# Choose one or more message aggregators: last, mean, sequence.
+MESSAGE_AGGREGATOR="${MESSAGE_AGGREGATOR:-sequence}"
+
+# Choose one or more memory modes. 0 is plain TGN-style memory, 2 is m2/ProvIDS-enhanced memory.
+MEMORY_ENHANCEMENT="${MEMORY_ENHANCEMENT:-2}"
+
+# Choose one or more ProvIDS GNN layers.
+NUM_UNITS="${NUM_UNITS:-1}"
 
 # Number of concurrent Hydra jobs inside this shell/slurm allocation.
 N_JOBS="${N_JOBS:-2}"
@@ -73,11 +82,20 @@ if [[ "$DATASET" == "cause_effect" ]]; then
 elif [[ "$DATASET" == "long_range" ]]; then
   python -m T-GRAB.train.hydra_multirun --multirun \
     dataset=long_range \
-    dataset.lag=4 \
-    dataset.branch_len=4 \
-    dataset.num_branches=3 \
+    dataset.lag=8,16,64 \
+    dataset.branch_len=4,8,16 \
+    dataset.num_branches=3,6 \
+    "${COMMON_OVERRIDES[@]}"
+elif [[ "$DATASET" == "ordered_long_range" ]]; then
+  python -m T-GRAB.train.hydra_multirun --multirun \
+    dataset=ordered_long_range \
+    dataset.lag=8,16 \
+    dataset.branch_len=8,16 \
+    dataset.num_branches=6,8 \
+    dataset.num_samples=1000 \
+    training.val_first_metric=memnode_avg_ap \
     "${COMMON_OVERRIDES[@]}"
 else
-  echo "Unknown DATASET=$DATASET. Use DATASET=cause_effect or DATASET=long_range." >&2
+  echo "Unknown DATASET=$DATASET. Use DATASET=cause_effect, DATASET=long_range, or DATASET=ordered_long_range." >&2
   exit 1
 fi

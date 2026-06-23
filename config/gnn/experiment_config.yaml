@@ -6,7 +6,7 @@ defaults:
   - batching: tgn_loader
   - override hydra/launcher: joblib
 
-trainer: ${model.trainer}
+trainer: ${dataset.trainer_package}.${model.trainer_name}
 
 args:
   data: ${dataset.data}

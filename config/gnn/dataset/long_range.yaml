@@ -10,6 +10,7 @@ val_ratio: 0.1
 test_ratio: 0.1
 seed: 1235
 wandb_project: T-GRAB_lr_final
+trainer_package: CTDG.link_pred.memory_node
 
 data: (${.lag}, ${.branch_len})/long_range-${.num_snapshots}ns-${.num_nodes}nn-${.num_branches}nb-${.val_ratio}vr-${.test_ratio}tr
 node_feat: ONE_HOT
