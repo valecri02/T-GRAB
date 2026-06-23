@@ -34,7 +34,7 @@ export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
 export MKL_NUM_THREADS="${MKL_NUM_THREADS:-1}"
 export TGRAB_ROOT_LOAD_SAVE_DIR="${TGRAB_ROOT_LOAD_SAVE_DIR:-$REPO_DIR/scratch}"
 
-# Choose one of: cause_effect, long_range, ordered_long_range
+# Choose one of: cause_effect, long_range, ordered_long_range, associative_recall
 DATASET="${DATASET:-cause_effect}"
 
 # Choose one or more model configs.
@@ -87,7 +87,25 @@ elif [[ "$DATASET" == "ordered_long_range" ]]; then
     dataset.num_samples=1000 \
     training.val_first_metric=memnode_avg_ap \
     "${COMMON_OVERRIDES[@]}"
+elif [[ "$DATASET" == "associative_recall" ]]; then
+  # Starter configurations: easy sanity, main comparison, memory-pressure.
+  ASSOCIATIVE_CONFIGS=(
+    "8 4 4"
+    "16 8 4"
+    "16 16 8"
+  )
+  for config in "${ASSOCIATIVE_CONFIGS[@]}"; do
+    read -r LAG NUM_PAIRS NUM_DISTRACTOR_EDGES <<< "$config"
+    python -m T-GRAB.train.hydra_multirun --multirun \
+      dataset=associative_recall \
+      dataset.lag="$LAG" \
+      dataset.num_pairs="$NUM_PAIRS" \
+      dataset.num_distractor_edges="$NUM_DISTRACTOR_EDGES" \
+      dataset.num_samples=1000 \
+      training.val_first_metric="${VAL_FIRST_METRIC:-memnode_avg_ap}" \
+      "${COMMON_OVERRIDES[@]}"
+  done
 else
-  echo "Unknown DATASET=$DATASET. Use DATASET=cause_effect, DATASET=long_range, or DATASET=ordered_long_range." >&2
+  echo "Unknown DATASET=$DATASET. Use DATASET=cause_effect, DATASET=long_range, DATASET=ordered_long_range, or DATASET=associative_recall." >&2
   exit 1
 fi
