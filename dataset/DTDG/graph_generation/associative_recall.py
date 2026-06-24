@@ -16,11 +16,12 @@ from .graph_generator import GraphGenerator, nx_undirected_graph_to_sparse
 class AssociativeRecall(GraphGenerator):
     """Delayed query-value recall over ER-derived key/value bindings.
 
-    In each episode, multiple write timesteps produce key/value associations.
-    Edges are sampled from ER graphs over active non-memory nodes; each edge
-    (u, v) defines key=min(u, v), value=max(u, v). After a lag, the memory node
-    is connected to all keys. One timestep later, the target memory-node edges
-    are all values associated with those queried keys.
+    In each episode, every pre-query timestep produces key/value associations.
+    Edges are sampled uniformly over active non-memory nodes; each observed
+    undirected edge is assigned a random key/value orientation internally.
+    After the association stream, the memory node is connected to a subset of
+    keys. One timestep later, the target memory-node edges are all values
+    associated with those queried keys.
     """
 
     _pattern = r"^\((\d+), (\d+)\)$"
@@ -52,8 +53,6 @@ class AssociativeRecall(GraphGenerator):
             raise ValueError("active_nodes must be smaller than num_nodes because node 0 is memory.")
         if self.args.pairs_per_step <= 0:
             raise ValueError("pairs_per_step must be > 0.")
-        if self.args.num_distractor_edges < 0:
-            raise ValueError("num_distractor_edges must be >= 0.")
         if not (0 < self.args.query_ratio <= 1):
             raise ValueError("query_ratio must be in the interval (0, 1].")
 
@@ -61,10 +60,10 @@ class AssociativeRecall(GraphGenerator):
             self.dataset_name
             + f"/associative_recall-{args.num_samples}ns-{args.num_nodes}nn-"
             + f"{args.active_nodes}an-{args.pairs_per_step}pps-"
-            + f"{args.num_distractor_edges}nd-{args.query_ratio}qr-"
-            + f"{args.val_ratio}vr-{args.test_ratio}tr"
+            + f"{args.query_ratio}qr-{args.val_ratio}vr-{args.test_ratio}tr"
         )
 
+        self.num_association_steps = self.num_write_steps + self.lag
         self.cycle_len = self.num_write_steps + self.lag + 2
         self.query_offset = self.cycle_len - 2
         self.target_offset = self.cycle_len - 1
@@ -110,9 +109,9 @@ class AssociativeRecall(GraphGenerator):
         parser.add_argument("--num-samples", type=int, required=True)
         parser.add_argument("--active-nodes", type=int, required=True)
         parser.add_argument("--pairs-per-step", type=int, required=True)
-        parser.add_argument("--num-distractor-edges", type=int, required=True)
         parser.add_argument("--query-ratio", type=float, default=1.0)
-        # Backwards-compatible ignored arguments from the first version.
+        # Backwards-compatible ignored arguments from earlier versions.
+        parser.add_argument("--num-distractor-edges", type=int, default=0)
         parser.add_argument("--num-keys", type=int, default=None)
         parser.add_argument("--num-values", type=int, default=None)
         return parser
@@ -178,17 +177,15 @@ class AssociativeRecall(GraphGenerator):
         )
         return self._sample_unique_edges(active, self.args.pairs_per_step)
 
-    def _sample_distractor_edges(self) -> List[Tuple[int, int]]:
-        if self.args.num_distractor_edges == 0:
-            return []
-        return self._sample_unique_edges(self.non_memory_nodes, self.args.num_distractor_edges)
-
-    @staticmethod
     def _add_binding(
+        self,
         bindings: DefaultDict[int, Set[int]],
         edge: Tuple[int, int],
     ) -> Tuple[int, int]:
-        key, value = min(edge), max(edge)
+        if np.random.rand() < 0.5:
+            key, value = edge
+        else:
+            value, key = edge
         bindings[key].add(value)
         return key, value
 
@@ -207,7 +204,7 @@ class AssociativeRecall(GraphGenerator):
                 bindings: DefaultDict[int, Set[int]] = defaultdict(set)
                 write_edges_by_t = {}
 
-                for write_idx in range(self.num_write_steps):
+                for write_idx in range(self.num_association_steps):
                     now_t = cycle_start_t + write_idx
                     G = nx.empty_graph(self.num_nodes)
                     write_edges = self._sample_write_edges()
@@ -218,14 +215,6 @@ class AssociativeRecall(GraphGenerator):
                         write_edges_by_t[now_t].append((key, value))
                         G.add_edge(key, value, weight=self.edge_feat_value)
 
-                    src, dst, t, edge_feat = self._append_graph(G, now_t, src, dst, t, edge_feat)
-                    pbar.update(1)
-
-                for lag_idx in range(self.lag):
-                    now_t = cycle_start_t + self.num_write_steps + lag_idx
-                    G = nx.empty_graph(self.num_nodes)
-                    for u, v in self._sample_distractor_edges():
-                        G.add_edge(u, v, weight=self.edge_feat_value)
                     src, dst, t, edge_feat = self._append_graph(G, now_t, src, dst, t, edge_feat)
                     pbar.update(1)
 
@@ -287,6 +276,7 @@ class AssociativeRecall(GraphGenerator):
                     "target_offset": self.target_offset,
                     "lag": self.lag,
                     "num_write_steps": self.num_write_steps,
+                    "num_association_steps": self.num_association_steps,
                     "active_nodes": self.args.active_nodes,
                     "pairs_per_step": self.args.pairs_per_step,
                     "query_ratio": self.args.query_ratio,

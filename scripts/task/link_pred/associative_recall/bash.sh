@@ -26,7 +26,6 @@ VAL_FIRST_METRIC="memnode_avg_ap"
 NUM_NODES=100
 ACTIVE_NODES=16
 PAIRS_PER_STEP=2
-NUM_DISTRACTOR_EDGES=4
 QUERY_RATIO=1.0
 NUM_SAMPLES=1000
 
@@ -38,7 +37,7 @@ do
         do
             for NUM_WRITE_STEPS in 4 8
             do
-                DATA="($LAG, $NUM_WRITE_STEPS)/associative_recall-${NUM_SAMPLES}ns-${NUM_NODES}nn-${ACTIVE_NODES}an-${PAIRS_PER_STEP}pps-${NUM_DISTRACTOR_EDGES}nd-${QUERY_RATIO}qr-${VAL_RATIO}vr-${TEST_RATIO}tr"
+                DATA="($LAG, $NUM_WRITE_STEPS)/associative_recall-${NUM_SAMPLES}ns-${NUM_NODES}nn-${ACTIVE_NODES}an-${PAIRS_PER_STEP}pps-${QUERY_RATIO}qr-${VAL_RATIO}vr-${TEST_RATIO}tr"
 
                 for SEED in 1235
                 do
