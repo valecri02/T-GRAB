@@ -8,12 +8,13 @@ num_samples: 1000
 num_nodes: 100
 active_nodes: 16
 num_distractor_edges: 4
+query_ratio: 1.0
 val_ratio: 0.1
 test_ratio: 0.1
 seed: 1235
 wandb_project: T-GRAB_associative_recall
 trainer_package: CTDG.link_pred.associative_recall
 
-data: (${.lag}, ${.num_write_steps})/associative_recall-${.num_samples}ns-${.num_nodes}nn-${.active_nodes}an-${.pairs_per_step}pps-${.num_distractor_edges}nd-${.val_ratio}vr-${.test_ratio}tr
+data: (${.lag}, ${.num_write_steps})/associative_recall-${.num_samples}ns-${.num_nodes}nn-${.active_nodes}an-${.pairs_per_step}pps-${.num_distractor_edges}nd-${.query_ratio}qr-${.val_ratio}vr-${.test_ratio}tr
 node_feat: ONE_HOT
 node_feat_dim: 1

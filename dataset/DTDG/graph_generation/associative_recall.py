@@ -54,12 +54,15 @@ class AssociativeRecall(GraphGenerator):
             raise ValueError("pairs_per_step must be > 0.")
         if self.args.num_distractor_edges < 0:
             raise ValueError("num_distractor_edges must be >= 0.")
+        if not (0 < self.args.query_ratio <= 1):
+            raise ValueError("query_ratio must be in the interval (0, 1].")
 
         self.dataset_name = (
             self.dataset_name
             + f"/associative_recall-{args.num_samples}ns-{args.num_nodes}nn-"
             + f"{args.active_nodes}an-{args.pairs_per_step}pps-"
-            + f"{args.num_distractor_edges}nd-{args.val_ratio}vr-{args.test_ratio}tr"
+            + f"{args.num_distractor_edges}nd-{args.query_ratio}qr-"
+            + f"{args.val_ratio}vr-{args.test_ratio}tr"
         )
 
         self.cycle_len = self.num_write_steps + self.lag + 2
@@ -108,6 +111,7 @@ class AssociativeRecall(GraphGenerator):
         parser.add_argument("--active-nodes", type=int, required=True)
         parser.add_argument("--pairs-per-step", type=int, required=True)
         parser.add_argument("--num-distractor-edges", type=int, required=True)
+        parser.add_argument("--query-ratio", type=float, default=1.0)
         # Backwards-compatible ignored arguments from the first version.
         parser.add_argument("--num-keys", type=int, default=None)
         parser.add_argument("--num-values", type=int, default=None)
@@ -226,7 +230,12 @@ class AssociativeRecall(GraphGenerator):
                     pbar.update(1)
 
                 query_t = cycle_start_t + self.query_offset
-                query_keys = sorted(bindings.keys())
+                all_keys = sorted(bindings.keys())
+                num_query_keys = max(1, int(np.ceil(len(all_keys) * self.args.query_ratio)))
+                query_keys = sorted(
+                    int(key)
+                    for key in np.random.choice(all_keys, size=num_query_keys, replace=False)
+                )
                 G = nx.empty_graph(self.num_nodes)
                 for key in query_keys:
                     G.add_edge(self.memory_node, key, weight=self.edge_feat_value)
@@ -234,13 +243,16 @@ class AssociativeRecall(GraphGenerator):
                 pbar.update(1)
 
                 target_t = cycle_start_t + self.target_offset
-                target_values = sorted(set().union(*bindings.values()))
+                target_values = sorted(
+                    set().union(*(bindings[key] for key in query_keys))
+                )
                 G = nx.empty_graph(self.num_nodes)
                 for value in target_values:
                     G.add_edge(self.memory_node, value, weight=self.edge_feat_value)
 
                 self.targets[target_t] = {
                     "query_keys": query_keys,
+                    "all_keys": all_keys,
                     "target_values": target_values,
                     "bindings": {int(k): sorted(int(v) for v in values) for k, values in bindings.items()},
                     "write_edges_by_t": write_edges_by_t,
@@ -277,6 +289,7 @@ class AssociativeRecall(GraphGenerator):
                     "num_write_steps": self.num_write_steps,
                     "active_nodes": self.args.active_nodes,
                     "pairs_per_step": self.args.pairs_per_step,
+                    "query_ratio": self.args.query_ratio,
                     "targets": self.targets,
                 },
                 f,

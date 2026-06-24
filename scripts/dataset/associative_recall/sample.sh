@@ -16,6 +16,7 @@ NUM_NODES=100
 ACTIVE_NODES=16
 PAIRS_PER_STEP=2
 NUM_DISTRACTOR_EDGES=4
+QUERY_RATIO=1.0
 NUM_SAMPLES=1000
 VAL_RATIO=0.1
 TEST_RATIO=0.1
@@ -33,6 +34,7 @@ do
             --active-nodes=$ACTIVE_NODES \
             --pairs-per-step=$PAIRS_PER_STEP \
             --num-distractor-edges=$NUM_DISTRACTOR_EDGES \
+            --query-ratio=$QUERY_RATIO \
             --num-samples=$NUM_SAMPLES \
             --save-dir=$PWD/T-GRAB/scratch/data/
     done
