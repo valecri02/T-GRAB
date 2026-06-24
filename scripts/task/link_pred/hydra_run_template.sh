@@ -88,18 +88,20 @@ elif [[ "$DATASET" == "ordered_long_range" ]]; then
     training.val_first_metric=memnode_avg_ap \
     "${COMMON_OVERRIDES[@]}"
 elif [[ "$DATASET" == "associative_recall" ]]; then
-  # Starter configurations: easy sanity, main comparison, memory-pressure.
+  # Starter configurations: easy sanity, main comparison, longer retention.
+  # Format: lag num_write_steps pairs_per_step num_distractor_edges
   ASSOCIATIVE_CONFIGS=(
-    "8 4 4"
-    "16 8 4"
-    "16 16 8"
+    "4 4 2 0"
+    "8 8 2 0"
+    "16 8 2 4"
   )
   for config in "${ASSOCIATIVE_CONFIGS[@]}"; do
-    read -r LAG NUM_PAIRS NUM_DISTRACTOR_EDGES <<< "$config"
+    read -r LAG NUM_WRITE_STEPS PAIRS_PER_STEP NUM_DISTRACTOR_EDGES <<< "$config"
     python -m T-GRAB.train.hydra_multirun --multirun \
       dataset=associative_recall \
       dataset.lag="$LAG" \
-      dataset.num_pairs="$NUM_PAIRS" \
+      dataset.num_write_steps="$NUM_WRITE_STEPS" \
+      dataset.pairs_per_step="$PAIRS_PER_STEP" \
       dataset.num_distractor_edges="$NUM_DISTRACTOR_EDGES" \
       dataset.num_samples=1000 \
       training.val_first_metric="${VAL_FIRST_METRIC:-memnode_avg_ap}" \

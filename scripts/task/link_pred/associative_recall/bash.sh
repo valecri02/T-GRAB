@@ -24,8 +24,8 @@ MLSTM_LR=2e-5
 VAL_FIRST_METRIC="memnode_avg_ap"
 
 NUM_NODES=100
-NUM_KEYS=16
-NUM_VALUES=16
+ACTIVE_NODES=16
+PAIRS_PER_STEP=2
 NUM_DISTRACTOR_EDGES=4
 NUM_SAMPLES=1000
 
@@ -33,11 +33,11 @@ for VAL_RATIO in 0.1
 do
     for TEST_RATIO in 0.1
     do
-        for LAG in 8 16
+        for LAG in 4 8 16
         do
-            for NUM_PAIRS in 4 8 16
+            for NUM_WRITE_STEPS in 4 8
             do
-                DATA="($LAG, $NUM_PAIRS)/associative_recall-${NUM_SAMPLES}ns-${NUM_NODES}nn-${NUM_KEYS}nk-${NUM_VALUES}nv-${NUM_DISTRACTOR_EDGES}nd-${VAL_RATIO}vr-${TEST_RATIO}tr"
+                DATA="($LAG, $NUM_WRITE_STEPS)/associative_recall-${NUM_SAMPLES}ns-${NUM_NODES}nn-${ACTIVE_NODES}an-${PAIRS_PER_STEP}pps-${NUM_DISTRACTOR_EDGES}nd-${VAL_RATIO}vr-${TEST_RATIO}tr"
 
                 for SEED in 1235
                 do

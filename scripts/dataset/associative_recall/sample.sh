@@ -13,25 +13,25 @@ fi
 cd ../
 
 NUM_NODES=100
-NUM_KEYS=16
-NUM_VALUES=16
+ACTIVE_NODES=16
+PAIRS_PER_STEP=2
 NUM_DISTRACTOR_EDGES=4
 NUM_SAMPLES=1000
 VAL_RATIO=0.1
 TEST_RATIO=0.1
 
-for LAG in 8 16
+for LAG in 4 8 16
 do
-    for NUM_PAIRS in 4 8 16
+    for NUM_WRITE_STEPS in 4 8
     do
         python -m T-GRAB.dataset.DTDG.graph_generation.run associative_recall \
             --num-nodes=$NUM_NODES \
-            --dataset-name="($LAG, $NUM_PAIRS)" \
+            --dataset-name="($LAG, $NUM_WRITE_STEPS)" \
             --seed=12345 \
             --val-ratio=$VAL_RATIO \
             --test-ratio=$TEST_RATIO \
-            --num-keys=$NUM_KEYS \
-            --num-values=$NUM_VALUES \
+            --active-nodes=$ACTIVE_NODES \
+            --pairs-per-step=$PAIRS_PER_STEP \
             --num-distractor-edges=$NUM_DISTRACTOR_EDGES \
             --num-samples=$NUM_SAMPLES \
             --save-dir=$PWD/T-GRAB/scratch/data/

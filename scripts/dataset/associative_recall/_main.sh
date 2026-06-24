@@ -20,8 +20,8 @@ python -m T-GRAB.dataset.DTDG.graph_generation.run associative_recall \
     --val-ratio=$3 \
     --test-ratio=$4 \
     \
-    --num-keys=$5 \
-    --num-values=$6 \
+    --active-nodes=$5 \
+    --pairs-per-step=$6 \
     --num-distractor-edges=$7 \
     --num-samples=$8 \
     --save-dir=$PWD/T-GRAB/scratch/data/

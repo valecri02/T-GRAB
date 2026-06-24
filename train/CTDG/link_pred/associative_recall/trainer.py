@@ -15,13 +15,17 @@ class AssociativeRecallTrainer(MemoryNodeTrainer):
         if not match:
             raise ValueError(f"Invalid associative_recall data pattern: {data_pattern}")
         self.lag = int(match.group(1))
-        self.num_pairs = int(match.group(2))
+        self.num_write_steps = int(match.group(2))
         self.K = 0
-        self.cycle_len = self.num_pairs + self.lag + 2
+        self.cycle_len = self.num_write_steps + self.lag + 2
+        self.query_offset = self.cycle_len - 2
         self.target_offset = self.cycle_len - 1
 
     def get_dataset_regex_pattern(self) -> Tuple[str, str]:
         return AssociativeRecall.REGEX, self.args.data.split("/")[0]
+
+    def should_train_snapshot(self, snapshot_t: int) -> bool:
+        return int(snapshot_t) % self.cycle_len != self.query_offset
 
     def update_metrics(
         self,

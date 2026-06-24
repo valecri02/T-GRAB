@@ -230,6 +230,9 @@ class MemoryNodeTrainer(LinkPredTrainer):
 
         return early_stopper.step_check(self._early_stop_metric, self.model, op_to_cont="dec")
 
+    def should_train_snapshot(self, snapshot_t: int) -> bool:
+        return True
+
     def _train_for_one_epoch_snapshot_based(self):
         self.before_epoch_training()
 
@@ -242,7 +245,7 @@ class MemoryNodeTrainer(LinkPredTrainer):
         # Each batch represents only one snapshot.
         num_batches = len(self.train_loader)
         num_batches_to_log = 4
-        batches_chunk = num_batches // num_batches_to_log
+        batches_chunk = max(num_batches // num_batches_to_log, 1)
         
         for batch_idx, batch in enumerate(self.train_loader):
             if batch_idx % batches_chunk == 0:
@@ -259,6 +262,18 @@ class MemoryNodeTrainer(LinkPredTrainer):
             pos_edge_feat = pos_edge_feat[mask].to(self.device)
             pos_edge_ids = pos_edge_ids[mask].to(self.device)
             pos_t = curr_t[mask].to(self.device)
+
+            if not self.should_train_snapshot(int(pos_t[0].item())):
+                self.forward_backbone(
+                    pos_src,
+                    pos_dst,
+                    pos_t,
+                    batch_edge_id=pos_edge_ids,
+                    batch_edge_feat=pos_edge_feat,
+                    update_memory=True,
+                )
+                self.after_iteration_training()
+                continue
             
             neg_src, neg_dst = self.get_neg_link(pos_src, pos_dst)
             neg_t = pos_t.clone()
@@ -301,15 +316,21 @@ class MemoryNodeTrainer(LinkPredTrainer):
             loss_non_memnode = self.criterion(pos_non_memnode_pred, torch.ones_like(pos_non_memnode_pred)) * pos_non_memnode_pred.numel() / pos_pred.numel()
             loss_non_memnode = loss_non_memnode + self.criterion(neg_non_memnode_pred, torch.zeros_like(neg_non_memnode_pred)) * neg_non_memnode_pred.numel() / neg_pred.numel()
             
-            loss = 0.0
+            loss_terms = []
 
             if not torch.isnan(loss_non_memnode):
-                loss = loss + loss_non_memnode
+                loss_terms.append(loss_non_memnode)
 
             # First few snapshots does not have any positive links on the memory node.
             # So, we need to skip those snapshots to avoid NaN loss.
             if not torch.isnan(loss_memnode):
-                loss = loss + loss_memnode
+                loss_terms.append(loss_memnode)
+
+            if len(loss_terms) == 0:
+                self.after_iteration_training()
+                continue
+
+            loss = sum(loss_terms)
 
             loss.backward()
             self.optim.step()

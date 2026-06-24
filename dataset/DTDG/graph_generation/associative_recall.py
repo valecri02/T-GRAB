@@ -1,7 +1,8 @@
 import os
 import pickle
 import re
-from typing import Dict, List, Tuple
+from collections import defaultdict
+from typing import DefaultDict, Dict, List, Set, Tuple
 
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -13,11 +14,13 @@ from .graph_generator import GraphGenerator, nx_undirected_graph_to_sparse
 
 
 class AssociativeRecall(GraphGenerator):
-    """Synthetic key-value recall task.
+    """Delayed query-value recall over ER-derived key/value bindings.
 
-    Each episode writes several key-value bindings, waits through distractor
-    interactions, queries one key through the memory node, then asks the model
-    to predict the matching value as the only memory-node target.
+    In each episode, multiple write timesteps produce key/value associations.
+    Edges are sampled from ER graphs over active non-memory nodes; each edge
+    (u, v) defines key=min(u, v), value=max(u, v). After a lag, the memory node
+    is connected to all keys. One timestep later, the target memory-node edges
+    are all values associated with those queried keys.
     """
 
     _pattern = r"^\((\d+), (\d+)\)$"
@@ -30,42 +33,37 @@ class AssociativeRecall(GraphGenerator):
             args.seed,
         )
 
-        lag_and_pairs = self.dataset_name.split("/")[0]
-        if re.fullmatch(AssociativeRecall._pattern, lag_and_pairs):
-            match = re.fullmatch(AssociativeRecall._pattern, lag_and_pairs)
+        lag_and_write_steps = self.dataset_name.split("/")[0]
+        if re.fullmatch(AssociativeRecall._pattern, lag_and_write_steps):
+            match = re.fullmatch(AssociativeRecall._pattern, lag_and_write_steps)
             self.lag = int(match.group(1))
-            self.num_pairs = int(match.group(2))
+            self.num_write_steps = int(match.group(2))
         else:
             raise NotImplementedError()
 
         self.args = args
-        if self.num_pairs <= 0:
-            raise ValueError("associative_recall requires num_pairs > 0.")
         if self.lag < 0:
             raise ValueError("associative_recall requires lag >= 0.")
+        if self.num_write_steps <= 0:
+            raise ValueError("associative_recall requires num_write_steps > 0.")
+        if self.args.active_nodes < 2:
+            raise ValueError("active_nodes must be >= 2.")
+        if self.args.active_nodes >= self.num_nodes:
+            raise ValueError("active_nodes must be smaller than num_nodes because node 0 is memory.")
+        if self.args.pairs_per_step <= 0:
+            raise ValueError("pairs_per_step must be > 0.")
         if self.args.num_distractor_edges < 0:
             raise ValueError("num_distractor_edges must be >= 0.")
-        if self.num_pairs > min(self.args.num_keys, self.args.num_values):
-            raise ValueError(
-                f"num_pairs={self.num_pairs} must be <= min(num_keys={self.args.num_keys}, "
-                f"num_values={self.args.num_values})."
-            )
-
-        required_nodes = 1 + self.args.num_keys + self.args.num_values
-        if required_nodes > self.num_nodes:
-            raise ValueError(
-                f"num_nodes={self.num_nodes} is too small for num_keys={self.args.num_keys} "
-                f"and num_values={self.args.num_values}. Need at least {required_nodes}."
-            )
 
         self.dataset_name = (
             self.dataset_name
             + f"/associative_recall-{args.num_samples}ns-{args.num_nodes}nn-"
-            + f"{args.num_keys}nk-{args.num_values}nv-"
+            + f"{args.active_nodes}an-{args.pairs_per_step}pps-"
             + f"{args.num_distractor_edges}nd-{args.val_ratio}vr-{args.test_ratio}tr"
         )
 
-        self.cycle_len = self.num_pairs + self.lag + 2
+        self.cycle_len = self.num_write_steps + self.lag + 2
+        self.query_offset = self.cycle_len - 2
         self.target_offset = self.cycle_len - 1
         self.T = self.args.num_samples * self.cycle_len
 
@@ -80,12 +78,6 @@ class AssociativeRecall(GraphGenerator):
         self.edge_feat_datatype = np.int16
         self.edge_feat_value = 1
         self.memory_node = 0
-        self.key_nodes = np.arange(1, 1 + self.args.num_keys, dtype=self.node_datatype)
-        self.value_nodes = np.arange(
-            1 + self.args.num_keys,
-            1 + self.args.num_keys + self.args.num_values,
-            dtype=self.node_datatype,
-        )
         self.non_memory_nodes = np.arange(1, self.num_nodes, dtype=self.node_datatype)
         self.targets: Dict[int, Dict[str, object]] = {}
 
@@ -113,9 +105,12 @@ class AssociativeRecall(GraphGenerator):
         parser.add_argument("--test-ratio", type=float, required=True)
         parser.add_argument("--visualize", action="store_true")
         parser.add_argument("--num-samples", type=int, required=True)
-        parser.add_argument("--num-keys", type=int, required=True)
-        parser.add_argument("--num-values", type=int, required=True)
+        parser.add_argument("--active-nodes", type=int, required=True)
+        parser.add_argument("--pairs-per-step", type=int, required=True)
         parser.add_argument("--num-distractor-edges", type=int, required=True)
+        # Backwards-compatible ignored arguments from the first version.
+        parser.add_argument("--num-keys", type=int, default=None)
+        parser.add_argument("--num-values", type=int, default=None)
         return parser
 
     def get_val_mask(self, t: np.ndarray) -> torch.Tensor:
@@ -153,23 +148,45 @@ class AssociativeRecall(GraphGenerator):
             np.concatenate([edge_feat, edge_feat_t]),
         )
 
-    def _sample_distractor_edges(self) -> List[Tuple[int, int]]:
-        edges = set()
-        if self.args.num_distractor_edges == 0:
-            return []
-
-        max_unique_edges = len(self.non_memory_nodes) * (len(self.non_memory_nodes) - 1) // 2
-        if self.args.num_distractor_edges > max_unique_edges:
+    def _sample_unique_edges(
+        self,
+        candidates: np.ndarray,
+        num_edges: int,
+    ) -> List[Tuple[int, int]]:
+        max_unique_edges = len(candidates) * (len(candidates) - 1) // 2
+        if num_edges > max_unique_edges:
             raise ValueError(
-                f"num_distractor_edges={self.args.num_distractor_edges} exceeds the "
-                f"{max_unique_edges} unique non-memory edges available."
+                f"Requested {num_edges} unique edges from {len(candidates)} nodes, "
+                f"but only {max_unique_edges} are available."
             )
 
-        while len(edges) < self.args.num_distractor_edges:
-            u, v = np.random.choice(self.non_memory_nodes, size=2, replace=False)
-            edge = tuple(sorted((int(u), int(v))))
-            edges.add(edge)
+        edges = set()
+        while len(edges) < num_edges:
+            u, v = np.random.choice(candidates, size=2, replace=False)
+            edges.add(tuple(sorted((int(u), int(v)))))
         return list(edges)
+
+    def _sample_write_edges(self) -> List[Tuple[int, int]]:
+        active = np.random.choice(
+            self.non_memory_nodes,
+            size=self.args.active_nodes,
+            replace=False,
+        )
+        return self._sample_unique_edges(active, self.args.pairs_per_step)
+
+    def _sample_distractor_edges(self) -> List[Tuple[int, int]]:
+        if self.args.num_distractor_edges == 0:
+            return []
+        return self._sample_unique_edges(self.non_memory_nodes, self.args.num_distractor_edges)
+
+    @staticmethod
+    def _add_binding(
+        bindings: DefaultDict[int, Set[int]],
+        edge: Tuple[int, int],
+    ) -> Tuple[int, int]:
+        key, value = min(edge), max(edge)
+        bindings[key].add(value)
+        return key, value
 
     def get_links(self, args_dict) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         src = np.empty(0, dtype=self.node_datatype)
@@ -183,41 +200,50 @@ class AssociativeRecall(GraphGenerator):
         with tqdm(total=self.T, desc=self.dataset_name) as pbar:
             for sample_idx in range(self.args.num_samples):
                 cycle_start_t = sample_idx * self.cycle_len
-                keys = np.random.choice(self.key_nodes, size=self.num_pairs, replace=False)
-                values = np.random.choice(self.value_nodes, size=self.num_pairs, replace=False)
-                values = np.random.permutation(values)
-                pairs = [(int(k), int(v)) for k, v in zip(keys, values)]
-                query_idx = int(np.random.randint(self.num_pairs))
-                query_key, correct_value = pairs[query_idx]
+                bindings: DefaultDict[int, Set[int]] = defaultdict(set)
+                write_edges_by_t = {}
 
-                for pair_idx, (key, value) in enumerate(pairs):
-                    now_t = cycle_start_t + pair_idx
+                for write_idx in range(self.num_write_steps):
+                    now_t = cycle_start_t + write_idx
                     G = nx.empty_graph(self.num_nodes)
-                    G.add_edge(key, value, weight=self.edge_feat_value)
+                    write_edges = self._sample_write_edges()
+                    write_edges_by_t[now_t] = []
+
+                    for edge in write_edges:
+                        key, value = self._add_binding(bindings, edge)
+                        write_edges_by_t[now_t].append((key, value))
+                        G.add_edge(key, value, weight=self.edge_feat_value)
+
                     src, dst, t, edge_feat = self._append_graph(G, now_t, src, dst, t, edge_feat)
                     pbar.update(1)
 
                 for lag_idx in range(self.lag):
-                    now_t = cycle_start_t + self.num_pairs + lag_idx
+                    now_t = cycle_start_t + self.num_write_steps + lag_idx
                     G = nx.empty_graph(self.num_nodes)
                     for u, v in self._sample_distractor_edges():
                         G.add_edge(u, v, weight=self.edge_feat_value)
                     src, dst, t, edge_feat = self._append_graph(G, now_t, src, dst, t, edge_feat)
                     pbar.update(1)
 
-                query_t = cycle_start_t + self.num_pairs + self.lag
+                query_t = cycle_start_t + self.query_offset
+                query_keys = sorted(bindings.keys())
                 G = nx.empty_graph(self.num_nodes)
-                G.add_edge(self.memory_node, query_key, weight=self.edge_feat_value)
+                for key in query_keys:
+                    G.add_edge(self.memory_node, key, weight=self.edge_feat_value)
                 src, dst, t, edge_feat = self._append_graph(G, query_t, src, dst, t, edge_feat)
                 pbar.update(1)
 
-                target_t = query_t + 1
+                target_t = cycle_start_t + self.target_offset
+                target_values = sorted(set().union(*bindings.values()))
                 G = nx.empty_graph(self.num_nodes)
-                G.add_edge(self.memory_node, correct_value, weight=self.edge_feat_value)
+                for value in target_values:
+                    G.add_edge(self.memory_node, value, weight=self.edge_feat_value)
+
                 self.targets[target_t] = {
-                    "query_key": int(query_key),
-                    "correct_value": int(correct_value),
-                    "pairs": pairs,
+                    "query_keys": query_keys,
+                    "target_values": target_values,
+                    "bindings": {int(k): sorted(int(v) for v in values) for k, values in bindings.items()},
+                    "write_edges_by_t": write_edges_by_t,
                 }
                 src, dst, t, edge_feat = self._append_graph(G, target_t, src, dst, t, edge_feat)
 
@@ -245,11 +271,12 @@ class AssociativeRecall(GraphGenerator):
                 {
                     "edge_feat_value": self.edge_feat_value,
                     "cycle_len": self.cycle_len,
+                    "query_offset": self.query_offset,
                     "target_offset": self.target_offset,
                     "lag": self.lag,
-                    "num_pairs": self.num_pairs,
-                    "num_keys": self.args.num_keys,
-                    "num_values": self.args.num_values,
+                    "num_write_steps": self.num_write_steps,
+                    "active_nodes": self.args.active_nodes,
+                    "pairs_per_step": self.args.pairs_per_step,
                     "targets": self.targets,
                 },
                 f,

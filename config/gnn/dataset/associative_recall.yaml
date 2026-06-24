@@ -2,11 +2,11 @@ root_load_save_dir: /work3/s253892/T-GRAB/scratch
 data_loc: /work3/s253892/T-GRAB/scratch/data
 
 lag: 8
-num_pairs: 8
+num_write_steps: 8
+pairs_per_step: 2
 num_samples: 1000
 num_nodes: 100
-num_keys: 16
-num_values: 16
+active_nodes: 16
 num_distractor_edges: 4
 val_ratio: 0.1
 test_ratio: 0.1
@@ -14,6 +14,6 @@ seed: 1235
 wandb_project: T-GRAB_associative_recall
 trainer_package: CTDG.link_pred.associative_recall
 
-data: (${.lag}, ${.num_pairs})/associative_recall-${.num_samples}ns-${.num_nodes}nn-${.num_keys}nk-${.num_values}nv-${.num_distractor_edges}nd-${.val_ratio}vr-${.test_ratio}tr
+data: (${.lag}, ${.num_write_steps})/associative_recall-${.num_samples}ns-${.num_nodes}nn-${.active_nodes}an-${.pairs_per_step}pps-${.num_distractor_edges}nd-${.val_ratio}vr-${.test_ratio}tr
 node_feat: ONE_HOT
 node_feat_dim: 1
