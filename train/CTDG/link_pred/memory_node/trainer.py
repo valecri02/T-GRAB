@@ -233,6 +233,57 @@ class MemoryNodeTrainer(LinkPredTrainer):
     def should_train_snapshot(self, snapshot_t: int) -> bool:
         return True
 
+    def get_training_neg_link(
+        self,
+        pos_src: torch.Tensor,
+        pos_dst: torch.Tensor,
+        pos_t: torch.Tensor,
+        snapshot_t: int,
+    ):
+        return self.get_neg_link(pos_src, pos_dst)
+
+    def compute_snapshot_training_loss(
+        self,
+        pos_src: torch.Tensor,
+        pos_dst: torch.Tensor,
+        neg_src: torch.Tensor,
+        neg_dst: torch.Tensor,
+        pos_pred: torch.Tensor,
+        neg_pred: torch.Tensor,
+        snapshot_t: int,
+    ):
+        pos_memnode_mask = torch.logical_or(pos_src == 0, pos_dst == 0)
+        neg_memnode_mask = torch.logical_or(neg_src == 0, neg_dst == 0)
+        pos_non_memnode_mask = ~pos_memnode_mask
+        neg_non_memnode_mask = ~neg_memnode_mask
+
+        pos_memnode_pred = pos_pred[pos_memnode_mask]
+        neg_memnode_pred = neg_pred[neg_memnode_mask]
+        pos_non_memnode_pred = pos_pred[pos_non_memnode_mask]
+        neg_non_memnode_pred = neg_pred[neg_non_memnode_mask]
+
+        # Loss computation
+        loss_memnode = self.criterion(pos_memnode_pred, torch.ones_like(pos_memnode_pred)) * pos_memnode_pred.numel() / pos_pred.numel()
+        loss_memnode = loss_memnode + self.criterion(neg_memnode_pred, torch.zeros_like(neg_memnode_pred)) * neg_memnode_pred.numel() / neg_pred.numel()
+        
+        loss_non_memnode = self.criterion(pos_non_memnode_pred, torch.ones_like(pos_non_memnode_pred)) * pos_non_memnode_pred.numel() / pos_pred.numel()
+        loss_non_memnode = loss_non_memnode + self.criterion(neg_non_memnode_pred, torch.zeros_like(neg_non_memnode_pred)) * neg_non_memnode_pred.numel() / neg_pred.numel()
+        
+        loss_terms = []
+
+        if not torch.isnan(loss_non_memnode):
+            loss_terms.append(loss_non_memnode)
+
+        # First few snapshots does not have any positive links on the memory node.
+        # So, we need to skip those snapshots to avoid NaN loss.
+        if not torch.isnan(loss_memnode):
+            loss_terms.append(loss_memnode)
+
+        if len(loss_terms) == 0:
+            return None, loss_memnode, loss_non_memnode
+
+        return sum(loss_terms), loss_memnode, loss_non_memnode
+
     def _train_for_one_epoch_snapshot_based(self):
         self.before_epoch_training()
 
@@ -275,9 +326,9 @@ class MemoryNodeTrainer(LinkPredTrainer):
                 self.after_iteration_training()
                 continue
             
-            neg_src, neg_dst = self.get_neg_link(pos_src, pos_dst)
-            neg_t = pos_t.clone()
-            assert pos_src.size() == neg_src.size(), f"Number of negative links ({neg_src.size()}) is not the same as positive ones ({pos_src.size()}."
+            snapshot_t = int(pos_t[0].item())
+            neg_src, neg_dst = self.get_training_neg_link(pos_src, pos_dst, pos_t, snapshot_t)
+            neg_t = torch.full_like(neg_src, fill_value=snapshot_t)
             # assert curr_t.unique().numel() == 1, "All timestamps should be the same."
             
             # Forward model that is behind an MLP model to encode node embeddings. 
@@ -299,38 +350,18 @@ class MemoryNodeTrainer(LinkPredTrainer):
             assert torch.all(pos_pred <= 1) and torch.all(pos_pred >= 0), "Make sure predictions are in range [0, 1]."
             assert pos_src_node_embeddings.shape[0] == pos_src.shape[0], f"Mistmatch size between backbone output ({pos_src_node_embeddings.size()}) and input ({pos_src.size()})."
 
-            pos_memnode_mask = torch.logical_or(pos_src == 0, pos_dst == 0)
-            neg_memnode_mask = torch.logical_or(neg_src == 0, neg_dst == 0)
-            pos_non_memnode_mask = ~pos_memnode_mask
-            neg_non_memnode_mask = ~neg_memnode_mask
-
-            pos_memnode_pred = pos_pred[pos_memnode_mask]
-            neg_memnode_pred = neg_pred[neg_memnode_mask]
-            pos_non_memnode_pred = pos_pred[pos_non_memnode_mask]
-            neg_non_memnode_pred = neg_pred[neg_non_memnode_mask]
-
-            # Loss computation
-            loss_memnode = self.criterion(pos_memnode_pred, torch.ones_like(pos_memnode_pred)) * pos_memnode_pred.numel() / pos_pred.numel()
-            loss_memnode = loss_memnode + self.criterion(neg_memnode_pred, torch.zeros_like(neg_memnode_pred)) * neg_memnode_pred.numel() / neg_pred.numel()
-            
-            loss_non_memnode = self.criterion(pos_non_memnode_pred, torch.ones_like(pos_non_memnode_pred)) * pos_non_memnode_pred.numel() / pos_pred.numel()
-            loss_non_memnode = loss_non_memnode + self.criterion(neg_non_memnode_pred, torch.zeros_like(neg_non_memnode_pred)) * neg_non_memnode_pred.numel() / neg_pred.numel()
-            
-            loss_terms = []
-
-            if not torch.isnan(loss_non_memnode):
-                loss_terms.append(loss_non_memnode)
-
-            # First few snapshots does not have any positive links on the memory node.
-            # So, we need to skip those snapshots to avoid NaN loss.
-            if not torch.isnan(loss_memnode):
-                loss_terms.append(loss_memnode)
-
-            if len(loss_terms) == 0:
+            loss, loss_memnode, loss_non_memnode = self.compute_snapshot_training_loss(
+                pos_src,
+                pos_dst,
+                neg_src,
+                neg_dst,
+                pos_pred,
+                neg_pred,
+                snapshot_t,
+            )
+            if loss is None:
                 self.after_iteration_training()
                 continue
-
-            loss = sum(loss_terms)
 
             loss.backward()
             self.optim.step()
