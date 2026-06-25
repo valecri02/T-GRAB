@@ -15,9 +15,10 @@ from .graph_generator import GraphGenerator, nx_undirected_graph_to_sparse
 class OrderedLongRange(GraphGenerator):
     """Sequential-path variant of the long-range memory-node task.
 
-    This keeps the original long-range endpoint-retrieval target, but reveals
-    each branch path one edge per timestamp. After the branch has been fully
-    revealed, node 0 connects to all branch endpoints after an optional lag.
+    This follows the original long-range stream more closely, but reveals each
+    branch path one edge per timestamp. A new branch pattern starts at every
+    timestamp. Existing patterns continue for ``branch_len`` steps, and node 0
+    connects to a pattern's endpoints after ``branch_len + lag`` timesteps.
     """
 
     _pattern = r"^\((\d+), (\d+)\)$"
@@ -55,8 +56,8 @@ class OrderedLongRange(GraphGenerator):
             + f"/ordered_long_range-{args.num_samples}ns-{args.num_nodes}nn-"
             + f"{args.num_branches}nb-{args.val_ratio}vr-{args.test_ratio}tr"
         )
-        self.cycle_len = self.branch_len + self.lag + 1
-        self.T = self.args.num_samples * self.cycle_len
+        self.target_delay = self.branch_len + self.lag
+        self.T = self.args.num_samples + self.target_delay
 
         self.node_datatype = np.int64
         if self.T < 2**8:
@@ -71,24 +72,18 @@ class OrderedLongRange(GraphGenerator):
         self.effect_node = 0
         self.cause_node = 1
         self.edge_feat_value = 1
-        self.sequential_targets: Dict[int, Dict[str, List[int]]] = {}
+        self.sequential_targets: Dict[int, Dict[str, object]] = {}
 
-        self.test_num_cycles = int(self.args.num_samples * self.args.test_ratio)
-        self.val_num_cycles = int(self.args.num_samples * self.args.val_ratio)
-        self.train_num_cycles = (
-            self.args.num_samples - self.test_num_cycles - self.val_num_cycles
-        )
-        if self.train_num_cycles <= 0:
-            raise ValueError("Train split has no complete ordered-long-range cycles.")
+        self.test_num_samples = int(self.T * self.args.test_ratio)
+        self.val_num_samples = int(self.T * self.args.val_ratio)
+        self.train_num_samples = self.T - self.test_num_samples - self.val_num_samples
+        if self.train_num_samples <= 0:
+            raise ValueError("Train split has no ordered-long-range timesteps.")
 
         self.train_start_t = 0
-        self.val_start_t = self.train_num_cycles * self.cycle_len
-        self.test_start_t = (self.train_num_cycles + self.val_num_cycles) * self.cycle_len
-        assert self.T == (
-            self.train_num_cycles
-            + self.val_num_cycles
-            + self.test_num_cycles
-        ) * self.cycle_len
+        self.val_start_t = self.train_num_samples
+        self.test_start_t = self.val_start_t + self.val_num_samples
+        assert self.T == self.test_start_t + self.test_num_samples
 
     @staticmethod
     def get_parser():
@@ -138,7 +133,7 @@ class OrderedLongRange(GraphGenerator):
         def _append_graph(G: nx.Graph, now_t: int):
             nonlocal src, dst, t, edge_feat
             if G.number_of_edges() == 0:
-                G.add_edge(self.effect_node, self.effect_node, weight=self.edge_feat_value)
+                return
             src_t, dst_t, edge_feat_t = nx_undirected_graph_to_sparse(G, return_edge_feat=True)
             src_t = src_t.cpu().numpy().astype(self.node_datatype)
             dst_t = dst_t.cpu().numpy().astype(self.node_datatype)
@@ -153,57 +148,47 @@ class OrderedLongRange(GraphGenerator):
         if self.args.visualize:
             pos = nx.circular_layout(nx.complete_graph(self.num_nodes))
 
+        active_patterns: Dict[int, Dict[str, List[List[int]]]] = {}
         with tqdm(total=self.T, desc=self.dataset_name) as pbar:
-            for sample_idx in range(self.args.num_samples):
-                cycle_start_t = sample_idx * self.cycle_len
-                new_node_ids = self._reorder_nodes_wo_cause_effect()
-                mapped_branches = []
-                endpoints = []
+            for now_t in range(self.T):
+                if now_t < self.args.num_samples:
+                    new_node_ids = self._reorder_nodes_wo_cause_effect()
+                    mapped_branches = []
+                    endpoints = []
+                    for branch in paths:
+                        mapped_branch = [int(new_node_ids[node]) for node in branch]
+                        endpoints.append(mapped_branch[-1])
+                        mapped_branches.append(mapped_branch)
+                    active_patterns[now_t] = {
+                        "branches": mapped_branches,
+                        "endpoints": endpoints,
+                    }
 
-                for branch in paths:
-                    mapped_branch = [int(new_node_ids[node]) for node in branch]
-                    endpoints.append(mapped_branch[-1])
-                    mapped_branches.append(mapped_branch)
-
-                for step in range(self.branch_len):
-                    now_t = cycle_start_t + step
-                    G = nx.empty_graph(self.num_nodes)
-                    for mapped_branch in mapped_branches:
+                G = nx.empty_graph(self.num_nodes)
+                for start_t in range(
+                    max(0, now_t - self.branch_len + 1),
+                    min(now_t + 1, self.args.num_samples),
+                ):
+                    step = now_t - start_t
+                    pattern = active_patterns[start_t]
+                    for mapped_branch in pattern["branches"]:
                         u, v = mapped_branch[step], mapped_branch[step + 1]
                         G.add_edge(u, v, weight=self.edge_feat_value)
-                    _append_graph(G, now_t)
 
-                    if self.args.visualize and now_t < min(self.T, 4 * self.cycle_len):
-                        vis_save_dir = os.path.join(args_dict["save_dir"], self.dataset_name, "vis")
-                        os.makedirs(vis_save_dir, exist_ok=True)
-                        plt.figure(figsize=(20, 10))
-                        nx.draw_networkx(G, pos, node_size=40, with_labels=True, node_color="yellow")
-                        edge_labels = nx.get_edge_attributes(G, "weight")
-                        nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels)
-                        plt.title(f"Ordered long-range timestep {now_t}")
-                        plt.savefig(os.path.join(vis_save_dir, f"{now_t}.png"))
-                        plt.close()
-
-                    pbar.update(1)
-
-                for idle_step in range(self.lag):
-                    now_t = cycle_start_t + self.branch_len + idle_step
-                    G = nx.empty_graph(self.num_nodes)
-                    _append_graph(G, now_t)
-                    pbar.update(1)
-
-                now_t = cycle_start_t + self.branch_len + self.lag
-                G = nx.empty_graph(self.num_nodes)
-                for endpoint in endpoints:
-                    G.add_edge(self.effect_node, endpoint, weight=self.edge_feat_value)
-
-                self.sequential_targets[now_t] = {
-                    "endpoints": endpoints,
-                }
+                target_start_t = now_t - self.target_delay
+                if 0 <= target_start_t < self.args.num_samples:
+                    endpoints = active_patterns[target_start_t]["endpoints"]
+                    for endpoint in endpoints:
+                        G.add_edge(self.effect_node, endpoint, weight=self.edge_feat_value)
+                    self.sequential_targets[now_t] = {
+                        "start_t": target_start_t,
+                        "endpoints": endpoints,
+                    }
+                    del active_patterns[target_start_t]
 
                 _append_graph(G, now_t)
 
-                if self.args.visualize and now_t < min(self.T, 4 * self.branch_len):
+                if self.args.visualize and now_t < min(self.T, 4 * self.target_delay):
                     vis_save_dir = os.path.join(args_dict["save_dir"], self.dataset_name, "vis")
                     os.makedirs(vis_save_dir, exist_ok=True)
                     plt.figure(figsize=(20, 10))
@@ -226,9 +211,9 @@ class OrderedLongRange(GraphGenerator):
             pickle.dump(
                 {
                     "edge_feat_value": self.edge_feat_value,
-                    "cycle_len": self.cycle_len,
                     "branch_len": self.branch_len,
                     "lag": self.lag,
+                    "target_delay": self.target_delay,
                     "targets": self.sequential_targets,
                 },
                 f,
