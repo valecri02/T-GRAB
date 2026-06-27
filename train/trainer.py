@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 import argparse
 import json
 import gc
+import random
 import timeit
 from typing import Any, Dict, List, Tuple
 import os
@@ -164,6 +165,110 @@ class Trainer(ABC):
             self.run_dir,
             'saved_models',
         )
+
+    def _get_resume_checkpoint_path(self) -> str:
+        return os.path.join(
+            self._get_save_model_dir(),
+            f"{self._get_model_card()}.latest.pth",
+        )
+
+    @staticmethod
+    def _get_rng_state() -> Dict[str, Any]:
+        numpy_state = np.random.get_state()
+        state = {
+            "python": random.getstate(),
+            "numpy": {
+                "bit_generator": numpy_state[0],
+                "keys": torch.from_numpy(
+                    numpy_state[1].astype(np.int64, copy=True)
+                ),
+                "position": numpy_state[2],
+                "has_gauss": numpy_state[3],
+                "cached_gaussian": numpy_state[4],
+            },
+            "torch": torch.get_rng_state(),
+        }
+        if torch.cuda.is_available():
+            state["cuda"] = torch.cuda.get_rng_state_all()
+        return state
+
+    @staticmethod
+    def _set_rng_state(state: Dict[str, Any]) -> None:
+        random.setstate(state["python"])
+        numpy_state = state["numpy"]
+        np.random.set_state((
+            numpy_state["bit_generator"],
+            numpy_state["keys"].cpu().numpy().astype(np.uint32),
+            numpy_state["position"],
+            numpy_state["has_gauss"],
+            numpy_state["cached_gaussian"],
+        ))
+        torch.set_rng_state(state["torch"].cpu())
+        if torch.cuda.is_available() and "cuda" in state:
+            torch.cuda.set_rng_state_all(
+                [cuda_state.cpu() for cuda_state in state["cuda"]]
+            )
+
+    def _save_resume_checkpoint(
+        self,
+        early_stopper: EarlyStopMonitor,
+        best_val_first_metric: Any,
+        timing_state: Dict[str, List[float]],
+    ) -> None:
+        checkpoint_path = self._get_resume_checkpoint_path()
+        temporary_path = checkpoint_path + ".tmp"
+        checkpoint = {
+            "version": 1,
+            "epoch": self.epoch,
+            "models": {
+                name: model.state_dict() for name, model in self.model.items()
+            },
+            "optimizer": self.optim.state_dict(),
+            "early_stopper": early_stopper.state_dict(),
+            "best_val_first_metric": best_val_first_metric,
+            "train_perf_list": self.train_perf_list,
+            "val_perf_list": self.val_perf_list,
+            "test_perf": self.test_perf,
+            "test_inductive_perf": self.test_inductive_perf,
+            "timing_state": timing_state,
+            "rng_state": self._get_rng_state(),
+        }
+        torch.save(checkpoint, temporary_path)
+        os.replace(temporary_path, checkpoint_path)
+
+    def _load_resume_checkpoint(
+        self,
+        early_stopper: EarlyStopMonitor,
+    ) -> Any:
+        checkpoint_path = self._get_resume_checkpoint_path()
+        if not os.path.exists(checkpoint_path):
+            return None
+
+        print(f"INFO: load training state from {checkpoint_path}", flush=True)
+        try:
+            checkpoint = torch.load(
+                checkpoint_path,
+                map_location=self.device,
+                weights_only=False,
+            )
+        except TypeError:
+            # PyTorch versions before weights_only was introduced.
+            checkpoint = torch.load(checkpoint_path, map_location=self.device)
+        if checkpoint.get("version") != 1:
+            raise ValueError(
+                f"Unsupported training checkpoint version in {checkpoint_path}"
+            )
+
+        for model_name, model in self.model.items():
+            model.load_state_dict(checkpoint["models"][model_name])
+        self.optim.load_state_dict(checkpoint["optimizer"])
+        early_stopper.load_state_dict(checkpoint["early_stopper"])
+        self._set_rng_state(checkpoint["rng_state"])
+        print(
+            f"INFO: resume training after completed epoch {checkpoint['epoch']}.",
+            flush=True,
+        )
+        return checkpoint
     
     @abstractmethod
     def set_model_args(self, parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
@@ -255,26 +360,6 @@ class Trainer(ABC):
         early_stopper = EarlyStopMonitor(save_model_dir=save_model_dir, save_model_id=save_model_card, 
                                         tolerance=self.args.tolerance, patience=self.args.patience)
         json_save_dir = os.path.join(self._get_results_json_filedir(), "results.json")
-        
-        # Load the model and resume the training.
-        loaded = early_stopper.load_checkpoint(self.model, self.device)
-        if loaded:
-            with open(json_save_dir, 'r') as json_file:
-                file_data = json.load(json_file)
-                # convert file_data to list if not
-                if type(file_data) is dict:
-                    file_data = [file_data]
-                for d in file_data[::-1]:
-                    # Load the last trained epoch
-                    if "epoch" in d:
-                        epoch_start = d["epoch"]
-                        break
-                    # If last epoch not recorded, load the best epoch
-                    elif "best_epoch" in d:
-                        epoch_start = d["best_epoch"]
-                        break
-        else:
-            epoch_start = 1
 
         # ==================================================== Train & Validation
         # Records the training performance at different epochs
@@ -288,6 +373,47 @@ class Trainer(ABC):
 
         train_times_l, val_times_l = [], []
         free_mem_l, total_mem_l, used_mem_l = [], [], []
+
+        resume_checkpoint = self._load_resume_checkpoint(early_stopper)
+        if resume_checkpoint is not None:
+            epoch_start = resume_checkpoint["epoch"] + 1
+            best_val_first_metric = resume_checkpoint["best_val_first_metric"]
+            self.train_perf_list = resume_checkpoint["train_perf_list"]
+            self.val_perf_list = resume_checkpoint["val_perf_list"]
+            self.test_perf = resume_checkpoint["test_perf"]
+            self.test_inductive_perf = resume_checkpoint["test_inductive_perf"]
+            timing_state = resume_checkpoint["timing_state"]
+            train_times_l = timing_state["train_times"]
+            val_times_l = timing_state["val_times"]
+            free_mem_l = timing_state["free_mem"]
+            total_mem_l = timing_state["total_mem"]
+            used_mem_l = timing_state["used_mem"]
+        else:
+            # Older checkpoints contain model weights only. Keep supporting them
+            # so existing experiments can continue with a fresh optimizer.
+            loaded = early_stopper.load_checkpoint(self.model, self.device)
+            if loaded:
+                epoch_start = 1
+                if os.path.exists(json_save_dir):
+                    with open(json_save_dir, 'r') as json_file:
+                        file_data = json.load(json_file)
+                    if isinstance(file_data, dict):
+                        file_data = [file_data]
+                    for data in reversed(file_data):
+                        if "epoch" in data:
+                            epoch_start = data["epoch"]
+                            break
+                        if "best_epoch" in data:
+                            epoch_start = data["best_epoch"]
+                            break
+                print(
+                    "WARNING: legacy weights-only checkpoint loaded; optimizer, "
+                    "early-stopping, and RNG state start fresh.",
+                    flush=True,
+                )
+            else:
+                epoch_start = 1
+
         start_train_val = timeit.default_timer()
 
         for self.epoch in range(epoch_start, self.args.num_epoch + 1):
@@ -420,8 +546,23 @@ class Trainer(ABC):
                         print(f"JSON file saved at {json_save_dir}.", flush=True)
                 
                 # check for early stopping
-                if self.early_stopping_checker(early_stopper):
-                    break
+                should_stop = self.early_stopping_checker(early_stopper)
+            else:
+                should_stop = False
+
+            self._save_resume_checkpoint(
+                early_stopper,
+                best_val_first_metric,
+                {
+                    "train_times": train_times_l,
+                    "val_times": val_times_l,
+                    "free_mem": free_mem_l,
+                    "total_mem": total_mem_l,
+                    "used_mem": used_mem_l,
+                },
+            )
+            if should_stop:
+                break
         
         wandb.finish()
         print(f"INFO: >>>>> Run: {self.run_idx}, elapsed time: {timeit.default_timer() - start_run: .4f} <<<<<")

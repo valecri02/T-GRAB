@@ -42,6 +42,20 @@ class EarlyStopMonitor(object):
         return the path of the best model
         """
         return self.save_model_dir + '/{}.pth'.format(self.save_model_id)
+
+    def state_dict(self):
+        return {
+            "counter": self.counter,
+            "best_sofar": self.best_sofar,
+            "best_epoch": self.best_epoch,
+            "epoch_idx": self.epoch_idx,
+        }
+
+    def load_state_dict(self, state_dict):
+        self.counter = state_dict["counter"]
+        self.best_sofar = state_dict["best_sofar"]
+        self.best_epoch = state_dict["best_epoch"]
+        self.epoch_idx = state_dict["epoch_idx"]
     
     def step_check(self, curr_metric: float, models_dict: dict, op_to_cont: Literal['inc', 'dec'] = 'inc'):
         r"""
@@ -102,7 +116,4 @@ class EarlyStopMonitor(object):
         print("INFO: model weights loaded successfully.", flush=True)
         
         return True
-        
-
-
         

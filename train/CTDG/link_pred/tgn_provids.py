@@ -13,11 +13,11 @@ class LinkPredTGNTrainer(LinkPredTrainer, TGNTrainer):
 
     @property
     def parameters(self):
-        return (
-            set(self.model[NODE_EMB_MODEL_NAME].parameters())
-            | set(self.model['memory'].parameters())
-            | set(self.model['link_pred'].parameters())
-        )
+        return [
+            parameter
+            for model_name in (NODE_EMB_MODEL_NAME, 'memory', 'link_pred')
+            for parameter in self.model[model_name].parameters()
+        ]
 
     def before_epoch_training(self):
         self.neighbor_loader.reset_state()
