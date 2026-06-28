@@ -38,9 +38,9 @@ args:
   dropout: ${model.dropout}
   num_neighbors: ${model.num_neighbors}
   time_feat_dim: ${model.time_feat_dim}
-  memory_dim: ${model.memory_dim}
-  memory_enhancement: ${model.memory_enhancement}
-  message_aggregator: ${model.message_aggregator}
+  memory_dim: ${oc.select:model.memory_dim,null}
+  memory_enhancement: ${oc.select:model.memory_enhancement,null}
+  message_aggregator: ${oc.select:model.message_aggregator,null}
   mlstm_num_heads: ${oc.select:model.mlstm_num_heads,null}
   mlstm_state_max_nodes: ${oc.select:model.mlstm_state_max_nodes,null}
 
