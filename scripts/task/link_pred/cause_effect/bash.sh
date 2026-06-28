@@ -41,13 +41,12 @@ export WANDB_API_KEY=wandb_v1_VyRQ5Mtfk1h48U7zSywBLXU1r8s_IDnUMX8I6K44YjgvSEU9Tk
 wandb login --verify
 EVAL_MODE=false
 CTDG_DO_SNAPSHOT_TRAINING=true
-# METHODS_TO_RUN=("CTDG/_edgebank" "CTDG/_dygformer" "CTDG/_ctan" "CTDG/_tgn" "CTDG/_tgn_provids" "CTDG/_tgn_provids_mlstm" "CTDG/_tgat" "DTDG/_gcn" "DTDG/_gclstm" "DTDG/_egcn" "DTDG/_tgcn" "DTDG/_gat" "DTDG/_previous")
-METHODS_TO_RUN=("CTDG/_edgebank")
-
+# METHODS_TO_RUN=("CTDG/_edgebank" "CTDG/_dygformer" "CTDG/_ctan" "CTDG/_tgn" "CTDG/_tgn_provids" "CTDG/_tgn_provids_nomemory" "CTDG/_tgn_provids_mlstm" "CTDG/_tgat" "DTDG/_gcn" "DTDG/_gclstm" "DTDG/_egcn" "DTDG/_tgcn" "DTDG/_gat" "DTDG/_previous")
+METHODS_TO_RUN=("CTDG/_tgn_provids_mlstm")
 CLEAR_RESULT=true
 WANDB_ENTITY="cristoferivalentina5-danmarks-tekniske-universitet-dtu"
 MLSTM_NUM_HEADS=4
-MESSAGE_AGGREGATOR="sequence"
+MESSAGE_AGGREGATOR="mean"
 ###########################################################################
 
 VAL_FIRST_METRIC="memnode_avg_f1"
@@ -95,7 +94,7 @@ do
                                         # As far as NODE_FEAT=ONE_HOT, it's not important what is the node feature dimension!
                                         for NODE_FEAT_DIM in 1
                                         do
-                                            for model in "CTDG/_dygformer" "CTDG/_tgn" "CTDG/_tgn_provids" "CTDG/_tgn_provids_mlstm" "CTDG/_tgat"
+                                            for model in "CTDG/_dygformer" "CTDG/_tgn" "CTDG/_tgn_provids" "CTDG/_tgn_provids_nomemory" "CTDG/_tgn_provids_mlstm" "CTDG/_tgat"
                                             do
                                                 if [[ " ${METHODS_TO_RUN[@]} " =~ " ${model} " ]]; then
                                                     # Memory computation for methods implemented by DyGLib
