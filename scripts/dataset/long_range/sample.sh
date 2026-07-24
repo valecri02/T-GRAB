@@ -9,6 +9,7 @@ module load python/3.8
 source $PWD/tgrab/bin/activate
 cd ../
 
+LAG=1
 BRANCH_LEN=4
 
 LAG=4

@@ -37,7 +37,6 @@ task=long_range
 NUM_EPOCHS_TO_VIS=0
 
 ###################### Running-specific variables #########################
-export WANDB_API_KEY="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"
 wandb login --relogin "$WANDB_API_KEY"
 EVAL_MODE=false
 CTDG_DO_SNAPSHOT_TRAINING=true
@@ -52,16 +51,16 @@ MESSAGE_AGGREGATOR="mean"
 VAL_FIRST_METRIC="memnode_avg_f1"
 
 #@@@@@@@@@@@@@@@@@@@@@ Dataset-specific variables @@@@@@@@@@@@@@@@@@@@@@@@@@
-NUM_BRANCHES=3
+NUM_BRANCHES=6
 NUM_NODES=100
 #Periodicity training
 for VAL_RATIO in 0.1
 do
     for TEST_RATIO in 0.1
     do
-        for LAG in 1
+        for LAG in 8
         do
-            for BRANCH_LEN in 4
+            for BRANCH_LEN in 4 8
             do
 #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
@@ -70,10 +69,9 @@ do
 #$$$$$$$$$$$$$$$$$$$$$$$$$ Model-specific variables $$$$$$$$$$$$$$$$$$$$$$$$$$$
                 if [[ " ${METHODS_TO_RUN[@]} " =~ " CTDG/_edgebank " ]]; then
                     # Edgebank doesn't need seed, or node_feat
-                    sbatch \
-                        --output="$PWD/scripts/tasks/logs/${task}/${value}_($LAG, $BRANCH_LEN)/CTDG/_edgebank/slurm-%j-${NUM_NODES}nn-${NUM_BRANCHES}nb-${VAL_RATIO}vr-${TEST_RATIO}tr-o.out" \
-                        --error="$PWD/scripts/tasks/logs/${task}/${value}_($LAG, $BRANCH_LEN)/CTDG/_edgebank/slurm-%j-${NUM_NODES}nn-${NUM_BRANCHES}nb-${VAL_RATIO}vr-${TEST_RATIO}tr-e.out" \
-                        scripts/task/link_pred/long_range/CTDG/_edgebank.sh \
+                        # --output="$PWD/scripts/tasks/logs/${task}/${value}_($LAG, $BRANCH_LEN)/CTDG/_edgebank/slurm-%j-${NUM_NODES}nn-${NUM_BRANCHES}nb-${VAL_RATIO}vr-${TEST_RATIO}tr-o.out" \
+                        # --error="$PWD/scripts/tasks/logs/${task}/${value}_($LAG, $BRANCH_LEN)/CTDG/_edgebank/slurm-%j-${NUM_NODES}nn-${NUM_BRANCHES}nb-${VAL_RATIO}vr-${TEST_RATIO}tr-e.out" \
+                        ./scripts/task/link_pred/long_range/CTDG/_edgebank.sh \
                             "$DATA" \
                             $ROOT_LOAD_SAVE_DIR \
                             "$VAL_FIRST_METRIC"
@@ -92,7 +90,7 @@ do
                         # As far as NODE_FEAT=ONE_HOT, it's not important what is the node feature dimension!
                         for NODE_FEAT_DIM in 1
                         do
-                            for model in "CTDG/_dygformer" "CTDG/_tgn" "CTDG/_tgn_provids" "CTDG/_tgn_provids_mlstm" "CTDG/_tgat"
+                            for model in "CTDG/_dygformer" "CTDG/_tgn" "CTDG/_tgn_provids" "CTDG/_tgn_provids_nomemory" "CTDG/_tgn_provids_mlstm" "CTDG/_tgat"
                             do
                                 if [[ " ${METHODS_TO_RUN[@]} " =~ " ${model} " ]]; then
                                     # Memory computation for methods implemented by DyGLib
@@ -116,7 +114,7 @@ do
                                                     do
                                                         for TRAIN_BATCH_SIZE in 1
                                                         do
-EXTRA_ARGS=()
+                                                            EXTRA_ARGS=()
                                                             if [[ "${model}" = "CTDG/_tgn_provids" ]]; then
                                                                 EXTRA_ARGS=("$MESSAGE_AGGREGATOR")
                                                             elif [[ "${model}" = "CTDG/_tgn_provids_mlstm" ]]; then

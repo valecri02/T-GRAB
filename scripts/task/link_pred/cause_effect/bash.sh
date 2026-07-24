@@ -37,7 +37,6 @@ task=cause_effect
 NUM_EPOCHS_TO_VIS=0
 
 ###################### Running-specific variables #########################
-export WANDB_API_KEY=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
 wandb login --verify
 EVAL_MODE=false
 CTDG_DO_SNAPSHOT_TRAINING=true

@@ -34,12 +34,12 @@ export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
 export MKL_NUM_THREADS="${MKL_NUM_THREADS:-1}"
 export TGRAB_ROOT_LOAD_SAVE_DIR="${TGRAB_ROOT_LOAD_SAVE_DIR:-$REPO_DIR/scratch}"
 
-# Choose one of: cause_effect, long_range, ordered_long_range, associative_recall
+# Choose one of: cause_effect, long_range, ordered_long_range
 DATASET="${DATASET:-cause_effect}"
 
-# Choose one or more model configs.
-# MODELS="${MODELS:-tgn_provids,tgn_provids_mlstm}"
-MODELS="${MODELS:-tgn_provids,tgn_provids_mlstm}"
+# Choose one or more model configs. The no-memory model must be run separately
+# because memory-specific Hydra overrides do not apply to it.
+MODELS="${MODELS:-tgn_provids_nomemory}"
 
 # Choose one or more message aggregators: last, mean, sequence.
 MESSAGE_AGGREGATOR="${MESSAGE_AGGREGATOR:-sequence}"
@@ -56,13 +56,21 @@ N_JOBS="${N_JOBS:-4}"
 
 COMMON_OVERRIDES=(
   "model=$MODELS"
-  "model.message_aggregator=$MESSAGE_AGGREGATOR"
-  "model.memory_enhancement=$MEMORY_ENHANCEMENT"
   "hydra.launcher.n_jobs=$N_JOBS"
   "training.replay_memory_before_eval"=false
   "training.lr"=5e-5
   "training.clear_results"=false
 )
+
+if [[ "$MODELS" == *tgn_provids_nomemory* && "$MODELS" == *,* ]]; then
+  echo "tgn_provids_nomemory cannot share a Hydra model sweep with memory-based models; run it separately." >&2
+  exit 1
+elif [[ "$MODELS" != *tgn_provids_nomemory* ]]; then
+  COMMON_OVERRIDES+=(
+    "model.message_aggregator=$MESSAGE_AGGREGATOR"
+    "model.memory_enhancement=$MEMORY_ENHANCEMENT"
+  )
+fi
 
 if [[ "$DATASET" == "cause_effect" ]]; then
   # lag 4,8,16,32 \
@@ -87,28 +95,7 @@ elif [[ "$DATASET" == "ordered_long_range" ]]; then
     dataset.num_samples=1000 \
     training.val_first_metric=memnode_avg_ap \
     "${COMMON_OVERRIDES[@]}"
-elif [[ "$DATASET" == "associative_recall" ]]; then
-  # Starter configurations: easy sanity, main comparison, longer retention.
-  # Format: lag num_write_steps pairs_per_step num_distractor_edges query_ratio
-  ASSOCIATIVE_CONFIGS=(
-    "4 4 2 0 1.0"
-    "8 8 2 0 1.0"
-    "16 8 2 4 1.0"
-  )
-  for config in "${ASSOCIATIVE_CONFIGS[@]}"; do
-    read -r LAG NUM_WRITE_STEPS PAIRS_PER_STEP NUM_DISTRACTOR_EDGES QUERY_RATIO <<< "$config"
-    python -m T-GRAB.train.hydra_multirun --multirun \
-      dataset=associative_recall \
-      dataset.lag="$LAG" \
-      dataset.num_write_steps="$NUM_WRITE_STEPS" \
-      dataset.pairs_per_step="$PAIRS_PER_STEP" \
-      dataset.num_distractor_edges="$NUM_DISTRACTOR_EDGES" \
-      dataset.query_ratio="$QUERY_RATIO" \
-      dataset.num_samples=1000 \
-      training.val_first_metric="${VAL_FIRST_METRIC:-memnode_avg_ap}" \
-      "${COMMON_OVERRIDES[@]}"
-  done
 else
-  echo "Unknown DATASET=$DATASET. Use DATASET=cause_effect, DATASET=long_range, DATASET=ordered_long_range, or DATASET=associative_recall." >&2
+  echo "Unknown DATASET=$DATASET. Use DATASET=cause_effect, DATASET=long_range, DATASET=ordered_long_range, DATASET=associative_recall, or DATASET=associative_recall_sparse." >&2
   exit 1
 fi
